@@ -3,6 +3,7 @@
   import { onMount, onDestroy } from "svelte";
 
   let game;
+  let cursors;
 
   onMount(async () => {
     const Phaser = await import("phaser");
@@ -31,6 +32,20 @@
 
           player.body.setCollideWorldBounds(true);
           this.physics.add.collider(player, floor);
+
+          this.player = player;
+          cursors = this.input.keyboard.createCursorKeys();
+        },
+        update() {
+          if (!this.player || !cursors) return;
+
+          if (cursors.left.isDown) {
+            this.player.body.setVelocityX(-200);
+          } else if (cursors.right.isDown) {
+            this.player.body.setVelocityX(200);
+          } else {
+            this.player.body.setVelocityX(0);
+          }
         }
       }
     };
