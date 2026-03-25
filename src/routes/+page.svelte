@@ -30,11 +30,22 @@
           const floor = this.add.rectangle(400, 560, 800, 80, 0x4f7942);
           this.physics.add.existing(floor, true);
 
+          const obstacle1 = this.add.rectangle(320, 500, 40, 40, 0xc0392b);
+          const obstacle2 = this.add.rectangle(520, 470, 40, 100, 0xc0392b);
+          const obstacle3 = this.add.rectangle(680, 515, 80, 30, 0xc0392b);
+
+          this.physics.add.existing(obstacle1, true);
+          this.physics.add.existing(obstacle2, true);
+          this.physics.add.existing(obstacle3, true);
+
           const player = this.add.rectangle(120, 420, 40, 60, 0x1f3c88);
           this.physics.add.existing(player);
 
           player.body.setCollideWorldBounds(true);
           this.physics.add.collider(player, floor);
+          this.physics.add.collider(player, obstacle1);
+          this.physics.add.collider(player, obstacle2);
+          this.physics.add.collider(player, obstacle3);
 
           this.player = player;
           cursors = this.input.keyboard.createCursorKeys();
