@@ -49,6 +49,10 @@
           } else {
             this.player.body.setVelocityX(0);
           }
+
+          if (cursors.up.isDown && this.player.body.blocked.down) {
+            this.player.body.setVelocityY(-450);
+          }
         }
       }
     };
