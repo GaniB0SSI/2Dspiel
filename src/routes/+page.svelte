@@ -20,8 +20,11 @@
         }
       },
       scene: {
+        preload() {
+          this.load.image('sky', '/sky.png');
+        },
         create() {
-          this.cameras.main.setBackgroundColor("#cfe8ff");
+          this.add.image(400, 300, 'sky');
 
           const floor = this.add.rectangle(400, 560, 800, 80, 0x4f7942);
           this.physics.add.existing(floor, true);
