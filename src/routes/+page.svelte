@@ -23,7 +23,7 @@
 			scene: {
 				preload() {
 					this.load.image('sky', '/sky.png');
-					this.load.image('standing_pose1', '/standing_pose1.png');
+					this.load.image('standing_pose2', '/standing_pose2.png');
 					this.load.image('walking_pose1', '/walking_pose1.png');
 					this.load.image('jumping_pose1', '/jumping_pose1.png');
 				},
@@ -64,6 +64,7 @@
 
 					const player = this.physics.add.sprite(120, 420, 'standing_pose2');
 					player.setOrigin(0.5, 0.5);
+					player.setDisplaySize(40, 60);
 					player.body.setSize(40, 60);
 
 					player.body.setCollideWorldBounds(true);
