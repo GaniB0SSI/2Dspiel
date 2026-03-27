@@ -9,6 +9,7 @@
 	const GRAVITY = 1500;
 	const MOVE_SPEED = 220;
 	const JUMP_SPEED = 560;
+	const WALK_ANIMATION_SPEED = 150;
 	const PLAYER_DISPLAY_WIDTH = 64;
 	const PLAYER_DISPLAY_HEIGHT = 102;
 	const PLAYER_HITBOX_WIDTH = 38;
@@ -17,6 +18,8 @@
 	let PhaserLib;
 	let game;
 	let levelComplete = false;
+	let walkFrame = 0;
+	let walkInterval = null;
 
 	onMount(async () => {
 		PhaserLib = await import('phaser');
@@ -24,10 +27,43 @@
 	});
 
 	onDestroy(() => {
+		stopWalkAnimation();
+
 		if (game) {
 			game.destroy(true);
 		}
 	});
+
+	function startWalkAnimation(scene) {
+		if (!scene?.player) return;
+
+		if (!walkInterval) {
+			walkFrame = walkFrame === 0 ? 1 : 0;
+			scene.player.setTexture(walkFrame === 0 ? 'standing_pose1' : 'walking_pose1');
+		}
+
+		if (walkInterval) return;
+
+		walkInterval = setInterval(() => {
+			if (!scene.player || levelComplete) return;
+
+			walkFrame = walkFrame === 0 ? 1 : 0;
+			scene.player.setTexture(walkFrame === 0 ? 'standing_pose1' : 'walking_pose1');
+		}, WALK_ANIMATION_SPEED);
+	}
+
+	function stopWalkAnimation(scene) {
+		if (walkInterval) {
+			clearInterval(walkInterval);
+			walkInterval = null;
+		}
+
+		walkFrame = 0;
+
+		if (scene?.player) {
+			scene.player.setTexture('standing_pose1');
+		}
+	}
 
 	function getRectBounds(entity) {
 		return {
@@ -151,6 +187,7 @@
 						vx: 0,
 						vy: 0,
 						onGround: false,
+						facingLeft: false,
 						width: PLAYER_HITBOX_WIDTH,
 						height: PLAYER_HITBOX_HEIGHT
 					};
@@ -174,8 +211,10 @@
 
 					if (moveLeft) {
 						state.vx = -MOVE_SPEED;
+						state.facingLeft = true;
 					} else if (moveRight) {
 						state.vx = MOVE_SPEED;
+						state.facingLeft = false;
 					} else {
 						state.vx = 0;
 					}
@@ -190,7 +229,7 @@
 					handleWorldBounds(this);
 					handleTriggers(this);
 					syncPlayerSprite(this);
-					updatePlayerTexture(this);
+					updatePlayerTexture(this, moveLeft || moveRight);
 				}
 			}
 		};
@@ -308,21 +347,24 @@
 		scene.playerState.vx = 0;
 		scene.playerState.vy = 0;
 		scene.playerState.onGround = false;
+		stopWalkAnimation(scene);
 	}
 
 	function syncPlayerSprite(scene) {
 		scene.player.setPosition(scene.playerState.x, scene.playerState.y);
+		scene.player.setFlipX(scene.playerState.facingLeft);
 	}
 
-	function updatePlayerTexture(scene) {
+	function updatePlayerTexture(scene, isMoving) {
 		const state = scene.playerState;
 
 		if (!state.onGround) {
+			stopWalkAnimation(scene);
 			scene.player.setTexture('jumping_pose1');
-		} else if (state.vx !== 0) {
-			scene.player.setTexture('walking_pose1');
+		} else if (isMoving) {
+			startWalkAnimation(scene);
 		} else {
-			scene.player.setTexture('standing_pose1');
+			stopWalkAnimation(scene);
 		}
 	}
 </script>

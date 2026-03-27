@@ -14,7 +14,7 @@
 
 <section class="screen game-screen">
 	<div class="backdrop"></div>
-	<div class="panel">
+	<div class="game-stage">
 		<div class="game-header">
 			<div>
 				<p class="eyebrow">Now Playing</p>
@@ -23,9 +23,7 @@
 			<a class="button secondary" href="/">Menu</a>
 		</div>
 
-		<div class="game-wrap">
-			<LevelGame level={1} />
-		</div>
+		<LevelGame level={1} />
 	</div>
 </section>
 
@@ -51,20 +49,14 @@
 	.backdrop {
 		position: absolute;
 		inset: 0;
-		background: linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.45));
+	
 		pointer-events: none;
 	}
 
-	.panel {
-		position: relative;
+	.game-stage {
 		z-index: 1;
 		width: min(100%, 980px);
 		margin: 0 auto;
-		padding: 32px;
-		border-radius: 28px;
-		background: rgba(15, 23, 42, 0.82);
-		border: 1px solid rgba(255, 255, 255, 0.12);
-		box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
 	}
 
 	.game-header {
@@ -90,10 +82,6 @@
 		text-shadow:
 			0 3px 0 rgba(0, 0, 0, 0.45),
 			0 10px 24px rgba(0, 0, 0, 0.35);
-	}
-
-	.game-wrap {
-		width: 100%;
 	}
 
 	.button {
@@ -122,10 +110,6 @@
 	}
 
 	@media (max-width: 720px) {
-		.panel {
-			padding: 24px;
-		}
-
 		.game-header {
 			flex-direction: column;
 			align-items: stretch;
