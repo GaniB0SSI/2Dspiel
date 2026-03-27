@@ -40,6 +40,19 @@
           this.physics.add.existing(obstacle3, true);
           this.physics.add.existing(hazard, true);
 
+          // Add upper platform
+          const upperPlatform = this.add.rectangle(600, 350, 200, 20, 0x8B4513);
+          this.physics.add.existing(upperPlatform, true);
+
+          // Add checkpoint on the upper platform
+          const checkpoint = this.add.rectangle(650, 320, 20, 20, 0xFFFF00);
+          this.physics.add.existing(checkpoint, true);
+          this.checkpoint = checkpoint;
+
+          // Initialize respawn point
+          this.respawnX = 120;
+          this.respawnY = 420;
+
           const player = this.add.rectangle(120, 420, 40, 60, 0x1f3c88);
           this.physics.add.existing(player);
 
@@ -50,8 +63,15 @@
           this.physics.add.collider(player, obstacle3);
           this.physics.add.overlap(player, hazard, () => {
             player.body.stop();
-            player.setPosition(120, 420);
+            player.setPosition(this.respawnX, this.respawnY);
           });
+          this.physics.add.collider(player, upperPlatform);
+
+          // Overlap for checkpoint
+          this.physics.add.overlap(player, checkpoint, () => {
+            this.respawnX = checkpoint.x;
+            this.respawnY = checkpoint.y - 20; // Above the checkpoint
+          }, null, this);
 
           this.player = player;
           cursors = this.input.keyboard.createCursorKeys();
@@ -69,6 +89,13 @@
 
           if (cursors.up.isDown && this.player.body.blocked.down) {
             this.player.body.setVelocityY(-450);
+          }
+
+          // Respawn if fallen off
+          if (this.player.body.y > 600) {
+            this.player.body.x = this.respawnX;
+            this.player.body.y = this.respawnY;
+            this.player.body.setVelocity(0, 0);
           }
         }
       }
