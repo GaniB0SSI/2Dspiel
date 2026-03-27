@@ -23,6 +23,9 @@
 			scene: {
 				preload() {
 					this.load.image('sky', '/sky.png');
+					this.load.image('standing_pose1', '/standing_pose1.png');
+					this.load.image('walking_pose1', '/walking_pose1.png');
+					this.load.image('jumping_pose1', '/jumping_pose1.png');
 				},
 				create() {
 					levelComplete = false;
@@ -59,8 +62,9 @@
 					this.respawnX = 120;
 					this.respawnY = 420;
 
-					const player = this.add.rectangle(120, 420, 40, 60, 0x1f3c88);
-					this.physics.add.existing(player);
+					const player = this.physics.add.sprite(120, 420, 'standing_pose2');
+					player.setOrigin(0.5, 0.5);
+					player.body.setSize(40, 60);
 
 					player.body.setCollideWorldBounds(true);
 					this.physics.add.collider(player, floor);
@@ -121,6 +125,16 @@
 					if (this.player.y > 600) {
 						this.player.setPosition(this.respawnX, this.respawnY);
 						this.player.body.setVelocity(0, 0);
+					}
+
+					const onGround = this.player.body.blocked.down;
+
+					if (!onGround) {
+						this.player.setTexture('jumping_pose1');
+					} else if (this.player.body.velocity.x !== 0) {
+						this.player.setTexture('walking_pose1');
+					} else {
+						this.player.setTexture('standing_pose2');
 					}
 				}
 			}
