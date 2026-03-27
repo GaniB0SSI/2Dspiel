@@ -42,6 +42,10 @@
           const upperPlatform = this.add.rectangle(600, 350, 200, 20, 0x8B4513);
           this.physics.add.existing(upperPlatform, true);
 
+          // Add checkpoint on the upper platform
+          const checkpoint = this.add.rectangle(650, 320, 20, 20, 0xFFFF00);
+          this.checkpoint = checkpoint;
+
           const player = this.add.rectangle(120, 420, 40, 60, 0x1f3c88);
           this.physics.add.existing(player);
 
@@ -51,6 +55,16 @@
           this.physics.add.collider(player, obstacle2);
           this.physics.add.collider(player, obstacle3);
           this.physics.add.collider(player, upperPlatform);
+
+          // Initialize respawn point
+          this.respawnX = 120;
+          this.respawnY = 420;
+
+          // Overlap for checkpoint
+          this.physics.add.overlap(player, checkpoint, () => {
+            this.respawnX = checkpoint.x;
+            this.respawnY = checkpoint.y - 20; // Above the checkpoint
+          }, null, this);
 
           this.player = player;
           cursors = this.input.keyboard.createCursorKeys();
