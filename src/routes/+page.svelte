@@ -83,6 +83,13 @@
           if (cursors.up.isDown && this.player.body.blocked.down) {
             this.player.body.setVelocityY(-450);
           }
+
+          // Respawn if fallen off
+          if (this.player.body.y > 600) {
+            this.player.body.x = this.respawnX;
+            this.player.body.y = this.respawnY;
+            this.player.body.setVelocity(0, 0);
+          }
         }
       }
     };
