@@ -38,6 +38,10 @@
           this.physics.add.existing(obstacle2, true);
           this.physics.add.existing(obstacle3, true);
 
+          // Add upper platform
+          const upperPlatform = this.add.rectangle(600, 350, 200, 20, 0x8B4513);
+          this.physics.add.existing(upperPlatform, true);
+
           const player = this.add.rectangle(120, 420, 40, 60, 0x1f3c88);
           this.physics.add.existing(player);
 
@@ -46,6 +50,7 @@
           this.physics.add.collider(player, obstacle1);
           this.physics.add.collider(player, obstacle2);
           this.physics.add.collider(player, obstacle3);
+          this.physics.add.collider(player, upperPlatform);
 
           this.player = player;
           cursors = this.input.keyboard.createCursorKeys();
