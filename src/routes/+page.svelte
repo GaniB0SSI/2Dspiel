@@ -33,8 +33,8 @@
 
 					const obstacle1 = this.add.rectangle(250, 485, 120, 20, 0x8e5a2a);
 					const obstacle2 = this.add.rectangle(390, 405, 120, 20, 0x8e5a2a);
-					const upperPlatform = this.add.rectangle(585, 340, 180, 20, 0x8b4513);
-					const obstacle3 = this.add.rectangle(470, 270, 120, 20, 0x8e5a2a);
+					const upperPlatform = this.add.rectangle(700, 340, 180, 20, 0x8b4513);
+					const obstacle3 = this.add.rectangle(380, 270, 120, 20, 0x8e5a2a);
 					const obstacle4 = this.add.rectangle(330, 195, 120, 20, 0x8e5a2a);
 					const obstacle5 = this.add.rectangle(200, 120, 120, 20, 0x8e5a2a);
 					const hazard = this.add.rectangle(535, 320, 55, 18, 0xd62828);
