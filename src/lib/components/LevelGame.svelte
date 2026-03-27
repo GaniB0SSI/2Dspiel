@@ -2,7 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { levelConfigs } from '$lib/game/levels';
 
-	export let level = 1;
+	let { level = 1 } = $props();
 
 	let PhaserLib;
 	let game;
@@ -40,9 +40,9 @@
 			scene: {
 				preload() {
 					this.load.image('sky', '/sky.png');
-					this.load.image('standing_pose1', '/standing_pose1.png');
-					this.load.image('walking_pose1', '/walking_pose1.png');
-					this.load.image('jumping_pose1', '/jumping_pose1.png');
+					this.load.image('standing_pose1', '/charachters/standing_pose1.png');
+					this.load.image('walking_pose1', '/charachters/walking_pose1.png');
+					this.load.image('jumping_pose1', '/charachters/jumping_pose1.png');
 				},
 				create() {
 					levelComplete = false;
@@ -56,8 +56,8 @@
 
 					const player = this.physics.add.sprite(levelData.respawn.x, levelData.respawn.y, 'standing_pose1');
 					player.setOrigin(0.5, 0.5);
-					player.setDisplaySize(40, 60);
-					player.body.setSize(40, 60);
+					player.setDisplaySize(56, 84);
+					player.body.setSize(56, 84);
 					player.body.setCollideWorldBounds(true);
 
 					this.physics.add.collider(player, floor);
