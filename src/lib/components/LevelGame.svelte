@@ -4,6 +4,16 @@
 
 	let { level = 1 } = $props();
 
+	const WORLD_WIDTH = 800;
+	const WORLD_HEIGHT = 600;
+	const GRAVITY = 1500;
+	const MOVE_SPEED = 220;
+	const JUMP_SPEED = 560;
+	const PLAYER_DISPLAY_WIDTH = 64;
+	const PLAYER_DISPLAY_HEIGHT = 102;
+	const PLAYER_HITBOX_WIDTH = 38;
+	const PLAYER_HITBOX_HEIGHT = 90;
+
 	let PhaserLib;
 	let game;
 	let levelComplete = false;
@@ -19,6 +29,19 @@
 		}
 	});
 
+	function getRectBounds(entity) {
+		return {
+			left: entity.x - entity.width / 2,
+			right: entity.x + entity.width / 2,
+			top: entity.y - entity.height / 2,
+			bottom: entity.y + entity.height / 2
+		};
+	}
+
+	function intersects(a, b) {
+		return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+	}
+
 	function createGame() {
 		const Phaser = PhaserLib.default;
 		const levelData = levelConfigs[level];
@@ -27,16 +50,9 @@
 
 		const config = {
 			type: Phaser.AUTO,
-			width: 800,
-			height: 600,
+			width: WORLD_WIDTH,
+			height: WORLD_HEIGHT,
 			parent: `game-container-${level}`,
-			physics: {
-				default: 'arcade',
-				arcade: {
-					gravity: { y: 800 },
-					debug: false
-				}
-			},
 			scene: {
 				preload() {
 					this.load.image('sky', '/sky.png');
@@ -46,21 +62,14 @@
 				},
 				create() {
 					levelComplete = false;
-					this.add.image(400, 300, 'sky');
+					this.add.image(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 'sky');
+
+					this.solids = [];
+					this.hazards = [];
+					this.checkpointReached = false;
 
 					const floor = this.add.rectangle(400, 560, 800, 80, 0x4f7942);
-					this.physics.add.existing(floor, true);
-
-					this.respawnX = levelData.respawn.x;
-					this.respawnY = levelData.respawn.y;
-
-					const player = this.physics.add.sprite(levelData.respawn.x, levelData.respawn.y, 'standing_pose1');
-					player.setOrigin(0.5, 0.5);
-					player.setDisplaySize(56, 84);
-					player.body.setSize(56, 84);
-					player.body.setCollideWorldBounds(true);
-
-					this.physics.add.collider(player, floor);
+					this.solids.push({ x: 400, y: 560, width: 800, height: 80, visual: floor });
 
 					levelData.platforms.forEach((platformData) => {
 						const platform = this.add.rectangle(
@@ -70,8 +79,14 @@
 							platformData.height,
 							platformData.color
 						);
-						this.physics.add.existing(platform, true);
-						this.physics.add.collider(player, platform);
+
+						this.solids.push({
+							x: platformData.x,
+							y: platformData.y,
+							width: platformData.width,
+							height: platformData.height,
+							visual: platform
+						});
 					});
 
 					levelData.hazards.forEach((hazardData) => {
@@ -82,90 +97,233 @@
 							hazardData.height,
 							0xd62828
 						);
-						this.physics.add.existing(hazard, true);
-						this.physics.add.overlap(player, hazard, () => {
-							if (levelComplete) return;
-							player.body.stop();
-							player.setPosition(this.respawnX, this.respawnY);
+
+						this.hazards.push({
+							x: hazardData.x,
+							y: hazardData.y,
+							width: hazardData.width,
+							height: hazardData.height,
+							visual: hazard
 						});
 					});
 
-					const checkpoint = this.add.rectangle(
-						levelData.checkpoint.x,
-						levelData.checkpoint.y,
-						levelData.checkpoint.width,
-						levelData.checkpoint.height,
-						0xffff00
-					);
-					this.physics.add.existing(checkpoint, true);
+					const checkpointData = levelData.checkpoint;
+					this.checkpoint = {
+						x: checkpointData.x,
+						y: checkpointData.y,
+						width: checkpointData.width,
+						height: checkpointData.height,
+						visual: this.add.rectangle(
+							checkpointData.x,
+							checkpointData.y,
+							checkpointData.width,
+							checkpointData.height,
+							0xffff00
+						)
+					};
 
-					this.physics.add.overlap(
-						player,
-						checkpoint,
-						() => {
-							this.respawnX = checkpoint.x;
-							this.respawnY = checkpoint.y - 20;
-						},
-						null,
-						this
-					);
+					const finishData = levelData.finish;
+					this.finish = {
+						x: finishData.x,
+						y: finishData.y,
+						width: finishData.width,
+						height: finishData.height,
+						visual: this.add.rectangle(
+							finishData.x,
+							finishData.y,
+							finishData.width,
+							finishData.height,
+							0x2a9d8f
+						)
+					};
 
-					const finish = this.add.rectangle(
-						levelData.finish.x,
-						levelData.finish.y,
-						levelData.finish.width,
-						levelData.finish.height,
-						0x2a9d8f
-					);
-					this.physics.add.existing(finish, true);
+					this.respawnX = levelData.respawn.x;
+					this.respawnY = levelData.respawn.y;
 
-					this.physics.add.overlap(player, finish, () => {
-						if (levelComplete) return;
-						levelComplete = true;
-						player.body.stop();
-						this.add.text(265, 60, `${levelData.label} Complete!`, {
-							fontSize: '32px',
-							color: '#1b4332'
-						});
-					});
+					const player = this.add.sprite(levelData.respawn.x, levelData.respawn.y, 'standing_pose1');
+					player.setOrigin(0.5, 0.5);
+					player.setDisplaySize(PLAYER_DISPLAY_WIDTH, PLAYER_DISPLAY_HEIGHT);
 
 					this.player = player;
+					this.playerState = {
+						x: levelData.respawn.x,
+						y: levelData.respawn.y,
+						vx: 0,
+						vy: 0,
+						onGround: false,
+						width: PLAYER_HITBOX_WIDTH,
+						height: PLAYER_HITBOX_HEIGHT
+					};
+
 					this.cursors = this.input.keyboard.createCursorKeys();
+					this.wasd = this.input.keyboard.addKeys({
+						up: Phaser.Input.Keyboard.KeyCodes.W,
+						left: Phaser.Input.Keyboard.KeyCodes.A,
+						right: Phaser.Input.Keyboard.KeyCodes.D
+					});
 				},
-				update() {
-					if (!this.player || !this.cursors || levelComplete) return;
+				update(_, deltaMs) {
+					if (!this.player || !this.cursors || !this.wasd || levelComplete) return;
 
-					if (this.cursors.left.isDown) {
-						this.player.body.setVelocityX(-200);
-					} else if (this.cursors.right.isDown) {
-						this.player.body.setVelocityX(200);
+					const dt = Math.min(deltaMs / 1000, 1 / 30);
+					const state = this.playerState;
+					const previousOnGround = state.onGround;
+					const moveLeft = this.cursors.left.isDown || this.wasd.left.isDown;
+					const moveRight = this.cursors.right.isDown || this.wasd.right.isDown;
+					const jumpPressed = this.cursors.up.isDown || this.wasd.up.isDown;
+
+					if (moveLeft) {
+						state.vx = -MOVE_SPEED;
+					} else if (moveRight) {
+						state.vx = MOVE_SPEED;
 					} else {
-						this.player.body.setVelocityX(0);
+						state.vx = 0;
 					}
 
-					if (this.cursors.up.isDown && this.player.body.blocked.down) {
-						this.player.body.setVelocityY(-450);
+					if (jumpPressed && previousOnGround) {
+						state.vy = -JUMP_SPEED;
+						state.onGround = false;
 					}
 
-					if (this.player.y > 600) {
-						this.player.setPosition(this.respawnX, this.respawnY);
-						this.player.body.setVelocity(0, 0);
-					}
-
-					const onGround = this.player.body.blocked.down;
-
-					if (!onGround) {
-						this.player.setTexture('jumping_pose1');
-					} else if (this.player.body.velocity.x !== 0) {
-						this.player.setTexture('walking_pose1');
-					} else {
-						this.player.setTexture('standing_pose1');
-					}
+					resolveHorizontalMovement(this, dt);
+					resolveVerticalMovement(this, dt);
+					handleWorldBounds(this);
+					handleTriggers(this);
+					syncPlayerSprite(this);
+					updatePlayerTexture(this);
 				}
 			}
 		};
 
 		game = new Phaser.Game(config);
+	}
+
+	function getPlayerBounds(scene) {
+		return getRectBounds(scene.playerState);
+	}
+
+	function resolveHorizontalMovement(scene, dt) {
+		const state = scene.playerState;
+		state.x += state.vx * dt;
+
+		let playerBounds = getPlayerBounds(scene);
+
+		for (const solid of scene.solids) {
+			const solidBounds = getRectBounds(solid);
+
+			if (!intersects(playerBounds, solidBounds)) continue;
+
+			if (state.vx > 0) {
+				state.x = solidBounds.left - state.width / 2;
+			} else if (state.vx < 0) {
+				state.x = solidBounds.right + state.width / 2;
+			}
+
+			state.vx = 0;
+			playerBounds = getPlayerBounds(scene);
+		}
+	}
+
+	function resolveVerticalMovement(scene, dt) {
+		const state = scene.playerState;
+		state.vy += GRAVITY * dt;
+		state.y += state.vy * dt;
+		state.onGround = false;
+
+		let playerBounds = getPlayerBounds(scene);
+
+		for (const solid of scene.solids) {
+			const solidBounds = getRectBounds(solid);
+
+			if (!intersects(playerBounds, solidBounds)) continue;
+
+			if (state.vy > 0) {
+				state.y = solidBounds.top - state.height / 2;
+				state.vy = 0;
+				state.onGround = true;
+			} else if (state.vy < 0) {
+				state.y = solidBounds.bottom + state.height / 2;
+				state.vy = 0;
+			}
+
+			playerBounds = getPlayerBounds(scene);
+		}
+	}
+
+	function handleWorldBounds(scene) {
+		const state = scene.playerState;
+		const halfWidth = state.width / 2;
+		const halfHeight = state.height / 2;
+
+		if (state.x - halfWidth < 0) {
+			state.x = halfWidth;
+			state.vx = 0;
+		}
+
+		if (state.x + halfWidth > WORLD_WIDTH) {
+			state.x = WORLD_WIDTH - halfWidth;
+			state.vx = 0;
+		}
+
+		if (state.y - halfHeight < 0) {
+			state.y = halfHeight;
+			state.vy = 0;
+		}
+
+		if (state.y - halfHeight > WORLD_HEIGHT) {
+			respawnPlayer(scene);
+		}
+	}
+
+	function handleTriggers(scene) {
+		const playerBounds = getPlayerBounds(scene);
+
+		for (const hazard of scene.hazards) {
+			if (intersects(playerBounds, getRectBounds(hazard))) {
+				respawnPlayer(scene);
+				return;
+			}
+		}
+
+		if (scene.checkpoint && intersects(playerBounds, getRectBounds(scene.checkpoint))) {
+			scene.respawnX = scene.checkpoint.x;
+			scene.respawnY = scene.checkpoint.y - PLAYER_HITBOX_HEIGHT / 2;
+			scene.checkpointReached = true;
+		}
+
+		if (scene.finish && intersects(playerBounds, getRectBounds(scene.finish))) {
+			levelComplete = true;
+			scene.playerState.vx = 0;
+			scene.playerState.vy = 0;
+			scene.add.text(265, 60, `${levelConfigs[level].label} Complete!`, {
+				fontSize: '32px',
+				color: '#1b4332'
+			});
+		}
+	}
+
+	function respawnPlayer(scene) {
+		scene.playerState.x = scene.respawnX;
+		scene.playerState.y = scene.respawnY;
+		scene.playerState.vx = 0;
+		scene.playerState.vy = 0;
+		scene.playerState.onGround = false;
+	}
+
+	function syncPlayerSprite(scene) {
+		scene.player.setPosition(scene.playerState.x, scene.playerState.y);
+	}
+
+	function updatePlayerTexture(scene) {
+		const state = scene.playerState;
+
+		if (!state.onGround) {
+			scene.player.setTexture('jumping_pose1');
+		} else if (state.vx !== 0) {
+			scene.player.setTexture('walking_pose1');
+		} else {
+			scene.player.setTexture('standing_pose1');
+		}
 	}
 </script>
 
