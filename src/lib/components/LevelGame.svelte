@@ -12,10 +12,8 @@
 	const WALK_ANIMATION_SPEED = 150;
 	const PLAYER_DISPLAY_WIDTH = 64;
 	const PLAYER_DISPLAY_HEIGHT = 102;
-	const CROUCH_DISPLAY_HEIGHT = 64;
 	const PLAYER_HITBOX_WIDTH = 38;
-	const STANDING_HITBOX_HEIGHT = 90;
-	const CROUCHING_HITBOX_HEIGHT = Math.round(STANDING_HITBOX_HEIGHT * 0.55);
+	const PLAYER_HITBOX_HEIGHT = 90;
 
 	let PhaserLib;
 	let game;
@@ -72,16 +70,7 @@
 
 		if (shouldCrouch === state.isCrouching) return;
 
-		const previousHeight = state.height;
 		state.isCrouching = shouldCrouch;
-		state.height = shouldCrouch ? CROUCHING_HITBOX_HEIGHT : STANDING_HITBOX_HEIGHT;
-
-		// Keep the player's feet planted when the hitbox height changes.
-		state.y += (state.height - previousHeight) / 2;
-		scene.player.setDisplaySize(
-			PLAYER_DISPLAY_WIDTH,
-			shouldCrouch ? CROUCH_DISPLAY_HEIGHT : PLAYER_DISPLAY_HEIGHT
-		);
 
 		if (shouldCrouch) {
 			stopWalkAnimation(scene, false);
@@ -217,7 +206,7 @@
 						isCrouching: false,
 						facingLeft: false,
 						width: PLAYER_HITBOX_WIDTH,
-						height: STANDING_HITBOX_HEIGHT
+						height: PLAYER_HITBOX_HEIGHT
 					};
 
 					this.cursors = this.input.keyboard.createCursorKeys();
@@ -384,8 +373,6 @@
 		scene.playerState.vy = 0;
 		scene.playerState.onGround = false;
 		scene.playerState.isCrouching = false;
-		scene.playerState.height = STANDING_HITBOX_HEIGHT;
-		scene.player.setDisplaySize(PLAYER_DISPLAY_WIDTH, PLAYER_DISPLAY_HEIGHT);
 		stopWalkAnimation(scene);
 	}
 
