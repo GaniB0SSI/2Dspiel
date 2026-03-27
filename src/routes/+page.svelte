@@ -1,154 +1,173 @@
-<script>
-	import { onMount, onDestroy } from 'svelte';
+<svelte:head>
+	<title>2D Spiel</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+	<link
+		href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
+		rel="stylesheet"
+	/>
+</svelte:head>
 
-	let game;
-	let cursors;
-	let levelComplete = false;
+<section class="screen menu-screen">
+	<div class="backdrop"></div>
+	<div class="panel">
+		<p class="eyebrow">Home Menu</p>
+		<h1>Choose A Level</h1>
+		<p class="description">Select a level to open the loading screen, then press Play to start.</p>
 
-	onMount(async () => {
-		const Phaser = await import('phaser');
+		<div class="actions">
+			<a class="button primary" href="/loading?level=1">Level 1</a>
+			<a class="button secondary" href="/loading?level=2">Level 2</a>
+		</div>
+	</div>
+</section>
 
-		const config = {
-			type: Phaser.AUTO,
-			width: 800,
-			height: 600,
-			parent: 'game-container',
-			physics: {
-				default: 'arcade',
-				arcade: {
-					gravity: { y: 800 },
-					debug: false
-				}
-			},
-			scene: {
-				preload() {
-					this.load.image('sky', '/sky.png');
-					this.load.image('standing_pose1', '/standing_pose1.png');
-					this.load.image('walking_pose1', '/walking_pose1.png');
-					this.load.image('jumping_pose1', '/jumping_pose1.png');
-				},
-				create() {
-					levelComplete = false;
-					this.add.image(400, 300, 'sky');
+<style>
+	:global(body) {
+		margin: 0;
+		font-family: 'Press Start 2P', 'Courier New', monospace;
+		background: #06070a;
+		color: #f8fafc;
+	}
 
-					const floor = this.add.rectangle(400, 560, 800, 80, 0x4f7942);
-					this.physics.add.existing(floor, true);
+	.screen {
+		position: relative;
+		overflow: hidden;
+		min-height: 100vh;
+		display: grid;
+		place-items: center;
+		padding: 24px;
+		box-sizing: border-box;
+		background:
+			linear-gradient(rgba(6, 7, 10, 0.5), rgba(6, 7, 10, 0.72)),
+			url('/loading_page.png') center / cover no-repeat;
+	}
 
-					const obstacle1 = this.add.rectangle(250, 485, 120, 20, 0x8e5a2a);
-					const obstacle2 = this.add.rectangle(390, 405, 120, 20, 0x8e5a2a);
-					const upperPlatform = this.add.rectangle(700, 340, 180, 20, 0x8b4513);
-					const obstacle3 = this.add.rectangle(380, 270, 120, 20, 0x8e5a2a);
-					const obstacle4 = this.add.rectangle(330, 195, 120, 20, 0x8e5a2a);
-					const obstacle5 = this.add.rectangle(200, 120, 120, 20, 0x8e5a2a);
-					const hazard = this.add.rectangle(535, 320, 55, 18, 0xd62828);
+	.backdrop {
+		position: absolute;
+		inset: 0;
+		background:
+			linear-gradient(rgba(8, 10, 18, 0.18), rgba(8, 10, 18, 0.72)),
+			repeating-linear-gradient(
+				0deg,
+				rgba(255, 255, 255, 0.02) 0,
+				rgba(255, 255, 255, 0.02) 2px,
+				transparent 2px,
+				transparent 6px
+			);
+		pointer-events: none;
+	}
 
-					this.physics.add.existing(obstacle1, true);
-					this.physics.add.existing(obstacle2, true);
-					this.physics.add.existing(upperPlatform, true);
-					this.physics.add.existing(obstacle3, true);
-					this.physics.add.existing(obstacle4, true);
-					this.physics.add.existing(obstacle5, true);
-					this.physics.add.existing(hazard, true);
+	.panel {
+		position: relative;
+		z-index: 1;
+		width: min(100%, 540px);
+		padding: 36px 32px;
+		border-radius: 6px;
+		background: rgba(11, 16, 33, 0.9);
+		border: 4px solid #f8d66d;
+		box-shadow:
+			0 0 0 4px rgba(18, 24, 45, 0.95),
+			0 18px 0 rgba(0, 0, 0, 0.45),
+			0 30px 60px rgba(0, 0, 0, 0.5);
+	}
 
-					// Keep the checkpoint on the upper platform, but leave jump space to pass through.
-					const checkpoint = this.add.rectangle(655, 312, 20, 20, 0xffff00);
-					this.physics.add.existing(checkpoint, true);
-					this.checkpoint = checkpoint;
+	.eyebrow {
+		margin: 0 0 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.16em;
+		font-size: 0.7rem;
+		color: #f8d66d;
+		text-shadow: 2px 2px 0 #000;
+	}
 
-					const finish = this.add.rectangle(200, 72, 30, 50, 0x2a9d8f);
-					this.physics.add.existing(finish, true);
+	h1 {
+		margin: 0;
+		font-size: clamp(1.8rem, 4vw, 3rem);
+		line-height: 1.25;
+		color: #fff8dc;
+		text-shadow:
+			4px 4px 0 #000,
+			0 0 18px rgba(248, 214, 109, 0.25);
+	}
 
-					// Initialize respawn point
-					this.respawnX = 120;
-					this.respawnY = 420;
+	.description {
+		margin: 14px 0 0;
+		font-size: 0.78rem;
+		line-height: 1.9;
+		color: #f4f7fb;
+		text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7);
+	}
 
-					const player = this.physics.add.sprite(120, 420, 'standing_pose1');
-					player.setOrigin(0.5, 0.5);
-					player.setDisplaySize(40, 60);
-					player.body.setSize(40, 60);
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 16px;
+		margin-top: 30px;
+	}
 
-					player.body.setCollideWorldBounds(true);
-					this.physics.add.collider(player, floor);
-					this.physics.add.collider(player, obstacle1);
-					this.physics.add.collider(player, obstacle2);
-					this.physics.add.collider(player, obstacle3);
-					this.physics.add.collider(player, obstacle4);
-					this.physics.add.collider(player, obstacle5);
-					this.physics.add.overlap(player, hazard, () => {
-						if (levelComplete) return;
-						player.body.stop();
-						player.setPosition(this.respawnX, this.respawnY);
-					});
-					this.physics.add.collider(player, upperPlatform);
+	.button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 180px;
+		border-radius: 4px;
+		padding: 16px 20px;
+		font-size: 0.82rem;
+		font-weight: 700;
+		text-decoration: none;
+		text-transform: uppercase;
+		border: 4px solid #0b1021;
+		box-shadow:
+			inset -4px -4px 0 rgba(0, 0, 0, 0.35),
+			inset 4px 4px 0 rgba(255, 255, 255, 0.12),
+			0 6px 0 rgba(0, 0, 0, 0.35);
+		transition:
+			transform 0.15s ease,
+			box-shadow 0.15s ease,
+			background-color 0.15s ease,
+			color 0.15s ease;
+	}
 
-					// Overlap for checkpoint
-					this.physics.add.overlap(
-						player,
-						checkpoint,
-						() => {
-							this.respawnX = checkpoint.x;
-							this.respawnY = checkpoint.y - 20; // Above the checkpoint
-						},
-						null,
-						this
-					);
+	.button:hover {
+		transform: translateY(-2px);
+		box-shadow:
+			inset -4px -4px 0 rgba(0, 0, 0, 0.25),
+			inset 4px 4px 0 rgba(255, 255, 255, 0.14),
+			0 0 18px rgba(248, 214, 109, 0.35);
+	}
 
-					this.physics.add.overlap(player, finish, () => {
-						if (levelComplete) return;
-						levelComplete = true;
-						player.body.stop();
-						this.add.text(240, 60, 'Level Complete!', {
-							fontSize: '32px',
-							color: '#1b4332'
-						});
-					});
+	.primary {
+		background: #f8d66d;
+		color: #101525;
+	}
 
-					this.player = player;
-					cursors = this.input.keyboard.createCursorKeys();
-				},
-				update() {
-					if (!this.player || !cursors) return;
-					if (levelComplete) return;
+	.secondary {
+		background: #22304f;
+		color: #f8fafc;
+	}
 
-					if (cursors.left.isDown) {
-						this.player.body.setVelocityX(-200);
-					} else if (cursors.right.isDown) {
-						this.player.body.setVelocityX(200);
-					} else {
-						this.player.body.setVelocityX(0);
-					}
+	.primary:hover {
+		background: #101525;
+		color: #f8d66d;
+		border-color: #f8d66d;
+	}
 
-					if (cursors.up.isDown && this.player.body.blocked.down) {
-						this.player.body.setVelocityY(-450);
-					}
+	.secondary:hover {
+		background: #f8d66d;
+		color: #101525;
+		border-color: #101525;
+	}
 
-					// Respawn if fallen off
-					if (this.player.y > 600) {
-						this.player.setPosition(this.respawnX, this.respawnY);
-						this.player.body.setVelocity(0, 0);
-					}
-
-					const onGround = this.player.body.blocked.down;
-
-					if (!onGround) {
-						this.player.setTexture('jumping_pose1');
-					} else if (this.player.body.velocity.x !== 0) {
-						this.player.setTexture('walking_pose1');
-					} else {
-						this.player.setTexture('standing_pose1');
-					}
-				}
-			}
-		};
-
-		game = new Phaser.Game(config);
-	});
-
-	onDestroy(() => {
-		if (game) {
-			game.destroy(true);
+	@media (max-width: 720px) {
+		.panel {
+			padding: 28px 22px;
 		}
-	});
-</script>
 
-<div id="game-container"></div>
+		.button {
+			width: 100%;
+			min-width: 0;
+			font-size: 0.74rem;
+		}
+	}
+</style>
