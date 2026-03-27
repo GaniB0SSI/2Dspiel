@@ -12,8 +12,10 @@
 	const WALK_ANIMATION_SPEED = 150;
 	const PLAYER_DISPLAY_WIDTH = 64;
 	const PLAYER_DISPLAY_HEIGHT = 102;
+	const CROUCH_DISPLAY_HEIGHT = 64;
 	const PLAYER_HITBOX_WIDTH = 38;
-	const PLAYER_HITBOX_HEIGHT = 90;
+	const STANDING_HITBOX_HEIGHT = 90;
+	const CROUCHING_HITBOX_HEIGHT = Math.round(STANDING_HITBOX_HEIGHT * 0.55);
 
 	let PhaserLib;
 	let game;
@@ -52,7 +54,7 @@
 		}, WALK_ANIMATION_SPEED);
 	}
 
-	function stopWalkAnimation(scene) {
+	function stopWalkAnimation(scene, resetToStanding = true) {
 		if (walkInterval) {
 			clearInterval(walkInterval);
 			walkInterval = null;
@@ -60,7 +62,31 @@
 
 		walkFrame = 0;
 
-		if (scene?.player) {
+		if (scene?.player && resetToStanding) {
+			scene.player.setTexture('standing_pose1');
+		}
+	}
+
+	function setCrouchState(scene, shouldCrouch) {
+		const state = scene.playerState;
+
+		if (shouldCrouch === state.isCrouching) return;
+
+		const previousHeight = state.height;
+		state.isCrouching = shouldCrouch;
+		state.height = shouldCrouch ? CROUCHING_HITBOX_HEIGHT : STANDING_HITBOX_HEIGHT;
+
+		// Keep the player's feet planted when the hitbox height changes.
+		state.y += (state.height - previousHeight) / 2;
+		scene.player.setDisplaySize(
+			PLAYER_DISPLAY_WIDTH,
+			shouldCrouch ? CROUCH_DISPLAY_HEIGHT : PLAYER_DISPLAY_HEIGHT
+		);
+
+		if (shouldCrouch) {
+			stopWalkAnimation(scene, false);
+			scene.player.setTexture('crouching_pose1');
+		} else {
 			scene.player.setTexture('standing_pose1');
 		}
 	}
@@ -95,6 +121,7 @@
 					this.load.image('standing_pose1', '/charachters/standing_pose1.png');
 					this.load.image('walking_pose1', '/charachters/walking_pose1.png');
 					this.load.image('jumping_pose1', '/charachters/jumping_pose1.png');
+					this.load.image('crouching_pose1', '/charachters/crouching_pose1.png');
 				},
 				create() {
 					levelComplete = false;
@@ -187,14 +214,16 @@
 						vx: 0,
 						vy: 0,
 						onGround: false,
+						isCrouching: false,
 						facingLeft: false,
 						width: PLAYER_HITBOX_WIDTH,
-						height: PLAYER_HITBOX_HEIGHT
+						height: STANDING_HITBOX_HEIGHT
 					};
 
 					this.cursors = this.input.keyboard.createCursorKeys();
 					this.wasd = this.input.keyboard.addKeys({
 						up: Phaser.Input.Keyboard.KeyCodes.W,
+						down: Phaser.Input.Keyboard.KeyCodes.S,
 						left: Phaser.Input.Keyboard.KeyCodes.A,
 						right: Phaser.Input.Keyboard.KeyCodes.D
 					});
@@ -207,19 +236,26 @@
 					const previousOnGround = state.onGround;
 					const moveLeft = this.cursors.left.isDown || this.wasd.left.isDown;
 					const moveRight = this.cursors.right.isDown || this.wasd.right.isDown;
+					const crouchPressed = this.cursors.down.isDown || this.wasd.down.isDown;
 					const jumpPressed = this.cursors.up.isDown || this.wasd.up.isDown;
 
+					if (crouchPressed && previousOnGround) {
+						setCrouchState(this, true);
+					} else if (state.isCrouching) {
+						setCrouchState(this, false);
+					}
+
 					if (moveLeft) {
-						state.vx = -MOVE_SPEED;
+						state.vx = state.isCrouching ? 0 : -MOVE_SPEED;
 						state.facingLeft = true;
 					} else if (moveRight) {
-						state.vx = MOVE_SPEED;
+						state.vx = state.isCrouching ? 0 : MOVE_SPEED;
 						state.facingLeft = false;
 					} else {
 						state.vx = 0;
 					}
 
-					if (jumpPressed && previousOnGround) {
+					if (jumpPressed && previousOnGround && !state.isCrouching) {
 						state.vy = -JUMP_SPEED;
 						state.onGround = false;
 					}
@@ -229,7 +265,7 @@
 					handleWorldBounds(this);
 					handleTriggers(this);
 					syncPlayerSprite(this);
-					updatePlayerTexture(this, moveLeft || moveRight);
+					updatePlayerTexture(this, (moveLeft || moveRight) && !state.isCrouching);
 				}
 			}
 		};
@@ -347,6 +383,9 @@
 		scene.playerState.vx = 0;
 		scene.playerState.vy = 0;
 		scene.playerState.onGround = false;
+		scene.playerState.isCrouching = false;
+		scene.playerState.height = STANDING_HITBOX_HEIGHT;
+		scene.player.setDisplaySize(PLAYER_DISPLAY_WIDTH, PLAYER_DISPLAY_HEIGHT);
 		stopWalkAnimation(scene);
 	}
 
@@ -359,8 +398,15 @@
 		const state = scene.playerState;
 
 		if (!state.onGround) {
-			stopWalkAnimation(scene);
+			if (state.isCrouching) {
+				setCrouchState(scene, false);
+			}
+
+			stopWalkAnimation(scene, false);
 			scene.player.setTexture('jumping_pose1');
+		} else if (state.isCrouching) {
+			stopWalkAnimation(scene, false);
+			scene.player.setTexture('crouching_pose1');
 		} else if (isMoving) {
 			startWalkAnimation(scene);
 		} else {
