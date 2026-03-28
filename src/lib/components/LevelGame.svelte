@@ -20,6 +20,7 @@
 	let levelComplete = false;
 	let walkFrame = 0;
 	let walkInterval = null;
+	const walkFrames = ['walking_pose1', 'standing_pose1', 'walking_pose2', 'standing_pose1'];
 
 	onMount(async () => {
 		PhaserLib = await import('phaser');
@@ -38,8 +39,8 @@
 		if (!scene?.player) return;
 
 		if (!walkInterval) {
-			walkFrame = walkFrame === 0 ? 1 : 0;
-			scene.player.setTexture(walkFrame === 0 ? 'standing_pose1' : 'walking_pose1');
+			walkFrame = (walkFrame + 1) % walkFrames.length;
+			scene.player.setTexture(walkFrames[walkFrame]);
 		}
 
 		if (walkInterval) return;
@@ -47,8 +48,8 @@
 		walkInterval = setInterval(() => {
 			if (!scene.player || levelComplete) return;
 
-			walkFrame = walkFrame === 0 ? 1 : 0;
-			scene.player.setTexture(walkFrame === 0 ? 'standing_pose1' : 'walking_pose1');
+			walkFrame = (walkFrame + 1) % walkFrames.length;
+			scene.player.setTexture(walkFrames[walkFrame]);
 		}, WALK_ANIMATION_SPEED);
 	}
 
@@ -109,6 +110,7 @@
 					this.load.image('sky', '/sky.png');
 					this.load.image('standing_pose1', '/charachters/standing_pose1.png');
 					this.load.image('walking_pose1', '/charachters/walking_pose1.png');
+					this.load.image('walking_pose2', '/charachters/walking_pose2.png');
 					this.load.image('jumping_pose1', '/charachters/jumping_pose1.png');
 					this.load.image('crouching_pose1', '/charachters/crouching_pose1.png');
 				},
@@ -216,6 +218,19 @@
 						left: Phaser.Input.Keyboard.KeyCodes.A,
 						right: Phaser.Input.Keyboard.KeyCodes.D
 					});
+
+					const onMoveKeyDown = () => {
+						if (this.playerState.isCrouching || !this.playerState.onGround) return;
+
+						walkFrame = (walkFrame + 1) % walkFrames.length;
+						this.player.setTexture(walkFrames[walkFrame]);
+						startWalkAnimation(this);
+					};
+
+					this.cursors.left.on('down', onMoveKeyDown);
+					this.cursors.right.on('down', onMoveKeyDown);
+					this.wasd.left.on('down', onMoveKeyDown);
+					this.wasd.right.on('down', onMoveKeyDown);
 				},
 				update(_, deltaMs) {
 					if (!this.player || !this.cursors || !this.wasd || levelComplete) return;
