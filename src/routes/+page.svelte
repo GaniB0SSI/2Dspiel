@@ -1,3 +1,16 @@
+<script>
+	import { browser } from '$app/environment';
+	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
+
+	onMount(() => {
+		if (!browser) return;
+		if (sessionStorage.getItem('introSeen')) return;
+
+		goto('/intro');
+	});
+</script>
+
 <svelte:head>
 	<title>2D Spiel</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />

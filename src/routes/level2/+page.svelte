@@ -13,7 +13,6 @@
 </svelte:head>
 
 <section class="screen game-screen">
-	<div class="backdrop"></div>
 	<div class="game-stage">
 		<div class="game-header">
 			<div>
@@ -41,16 +40,7 @@
 		min-height: 100vh;
 		padding: 24px;
 		box-sizing: border-box;
-		background:
-			linear-gradient(rgba(17, 24, 39, 0.55), rgba(17, 24, 39, 0.72)),
-			url('/loading_page.png') center / cover no-repeat;
-	}
-
-	.backdrop {
-		position: absolute;
-		inset: 0;
-
-		pointer-events: none;
+		background: #000000;
 	}
 
 	.game-stage {

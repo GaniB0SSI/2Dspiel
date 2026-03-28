@@ -108,11 +108,11 @@
 			scene: {
 				preload() {
 					this.load.image('sky', '/sky.png');
-					this.load.image('standing_pose1', '/charachters/standing_pose1.png');
-					this.load.image('walking_pose1', '/charachters/walking_pose1.png');
-					this.load.image('walking_pose2', '/charachters/walking_pose2.png');
-					this.load.image('jumping_pose1', '/charachters/jumping_pose1.png');
-					this.load.image('crouching_pose1', '/charachters/crouching_pose1.png');
+					this.load.image('standing_pose1', '/charachters/eni/standing_pose1.png');
+					this.load.image('walking_pose1', '/charachters/eni/walking_pose1.png');
+					this.load.image('walking_pose2', '/charachters/eni/walking_pose2.png');
+					this.load.image('jumping_pose1', '/charachters/eni/jumping_pose1.png');
+					this.load.image('crouching_pose1', '/charachters/eni/crouching_pose1.png');
 				},
 				create() {
 					levelComplete = false;
@@ -431,7 +431,6 @@
 	.game-container {
 		width: min(100%, 800px);
 		min-height: 600px;
-		border-radius: 24px;
 		overflow: hidden;
 		box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
 	}
