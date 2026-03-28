@@ -20,20 +20,47 @@
 	let levelComplete = false;
 	let walkFrame = 0;
 	let walkInterval = null;
+	let backgroundAudio = null;
+	let runningSoundAudio = null;
 	const walkFrames = ['walking_pose1', 'standing_pose1', 'walking_pose2', 'standing_pose1'];
 
 	onMount(async () => {
 		PhaserLib = await import('phaser');
+		backgroundAudio = new Audio('/sounds/backgroundsound.wav');
+		backgroundAudio.loop = true;
+		backgroundAudio.volume = 0.4;
+		backgroundAudio.play();
+		runningSoundAudio = new Audio('/sounds/running_sound.mp3');
+		runningSoundAudio.loop = true;
+		runningSoundAudio.volume = 0.5;
 		createGame();
 	});
 
 	onDestroy(() => {
+		if (backgroundAudio) {
+			backgroundAudio.pause();
+			backgroundAudio.currentTime = 0;
+			backgroundAudio = null;
+		}
+
+		stopRunningSound();
 		stopWalkAnimation();
 
 		if (game) {
 			game.destroy(true);
 		}
 	});
+
+	function startRunningSound() {
+		if (!runningSoundAudio || !runningSoundAudio.paused) return;
+		runningSoundAudio.play();
+	}
+
+	function stopRunningSound() {
+		if (!runningSoundAudio) return;
+		runningSoundAudio.pause();
+		runningSoundAudio.currentTime = 0;
+	}
 
 	function startWalkAnimation(scene) {
 		if (!scene?.player) return;
@@ -404,14 +431,18 @@
 				setCrouchState(scene, false);
 			}
 
+			stopRunningSound();
 			stopWalkAnimation(scene, false);
 			scene.player.setTexture('jumping_pose1');
 		} else if (state.isCrouching) {
+			stopRunningSound();
 			stopWalkAnimation(scene, false);
 			scene.player.setTexture('crouching_pose1');
 		} else if (isMoving) {
+			startRunningSound();
 			startWalkAnimation(scene);
 		} else {
+			stopRunningSound();
 			stopWalkAnimation(scene);
 		}
 	}
