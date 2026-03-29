@@ -1,5 +1,11 @@
 <script>
 	import LevelGame from '$lib/components/LevelGame.svelte';
+
+	function playClick() {
+		const audio = new Audio('/click.mp3');
+		audio.volume = 0.6;
+		audio.play();
+	}
 </script>
 
 <svelte:head>
@@ -19,7 +25,7 @@
 				<p class="eyebrow">Now Playing</p>
 				<h1>Level 2</h1>
 			</div>
-			<a class="button secondary" href="/">Menu</a>
+			<a class="button secondary" href="/" onclick={playClick}>Menu</a>
 		</div>
 
 		<LevelGame level={2} />

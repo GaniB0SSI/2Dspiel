@@ -21,6 +21,8 @@
 	let walkFrame = 0;
 	let walkInterval = null;
 	let backgroundAudio = null;
+	let jumpAudio = null;
+	let landAudio = null;
 	let runningSoundAudio = null;
 	const walkFrames = ['walking_pose1', 'standing_pose1', 'walking_pose2', 'standing_pose1'];
 
@@ -30,6 +32,10 @@
 		backgroundAudio.loop = true;
 		backgroundAudio.volume = 0.4;
 		backgroundAudio.play();
+		jumpAudio = new Audio('/sounds/swing.mp3');
+		jumpAudio.volume = 0.5;
+		landAudio = new Audio('/sounds/land.wav');
+		landAudio.volume = 0.5;
 		runningSoundAudio = new Audio('/sounds/running_sound.mp3');
 		runningSoundAudio.loop = true;
 		runningSoundAudio.volume = 0.5;
@@ -41,6 +47,16 @@
 			backgroundAudio.pause();
 			backgroundAudio.currentTime = 0;
 			backgroundAudio = null;
+		}
+
+		if (jumpAudio) {
+			jumpAudio.pause();
+			jumpAudio = null;
+		}
+
+		if (landAudio) {
+			landAudio.pause();
+			landAudio = null;
 		}
 
 		stopRunningSound();
@@ -289,10 +305,14 @@
 					if (jumpPressed && previousOnGround && !state.isCrouching) {
 						state.vy = -JUMP_SPEED;
 						state.onGround = false;
+						if (jumpAudio) {
+							jumpAudio.currentTime = 0;
+							jumpAudio.play();
+						}
 					}
 
 					resolveHorizontalMovement(this, dt);
-					resolveVerticalMovement(this, dt);
+					resolveVerticalMovement(this, dt, previousOnGround);
 					handleWorldBounds(this);
 					handleTriggers(this);
 					syncPlayerSprite(this);
@@ -330,7 +350,7 @@
 		}
 	}
 
-	function resolveVerticalMovement(scene, dt) {
+	function resolveVerticalMovement(scene, dt, previousOnGround) {
 		const state = scene.playerState;
 		state.vy += GRAVITY * dt;
 		state.y += state.vy * dt;
@@ -347,6 +367,10 @@
 				state.y = solidBounds.top - state.height / 2;
 				state.vy = 0;
 				state.onGround = true;
+				if (landAudio && !previousOnGround) {
+					landAudio.currentTime = 0;
+					landAudio.play();
+				}
 			} else if (state.vy < 0) {
 				state.y = solidBounds.bottom + state.height / 2;
 				state.vy = 0;

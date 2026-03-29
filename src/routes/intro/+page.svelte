@@ -5,8 +5,8 @@
 
 	const stages = [
 		'Escape The Dungeon',
-		'A student trapped in a cursed school...',
-		'Ancient spirits block every exit...',
+		'You have been trapped in this cursed school...',
+		'Ancient spirits block every room...',
 		'You must reach the rooftop to escape...',
 		'Only the brave will find the way out...'
 	];
@@ -36,6 +36,12 @@
 
 	function randomGlyph() {
 		return glyphs[Math.floor(Math.random() * glyphs.length)];
+	}
+
+	function playClick() {
+		const audio = new Audio('/click.mp3');
+		audio.volume = 0.6;
+		audio.play();
 	}
 
 	function animateStage(index) {
@@ -136,7 +142,10 @@
 	role="button"
 	tabindex="0"
 	aria-label="Continue intro"
-	onclick={handleClick}
+	onclick={() => {
+		playClick();
+		handleClick();
+	}}
 	onkeydown={handleKeydown}
 >
 	<div class="noise"></div>
