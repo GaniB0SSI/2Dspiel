@@ -6,7 +6,7 @@
 	const levelLabel = level === '1' ? 'Level 1' : level === '2' ? 'Level 2' : null;
 
 	function playClick() {
-		const audio = new Audio('/click.mp3');
+		const audio = new Audio('/sounds/click.mp3');
 		audio.volume = 0.6;
 		audio.play();
 	}

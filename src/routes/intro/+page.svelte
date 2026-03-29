@@ -1,7 +1,7 @@
 <script>
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 
 	const stages = [
 		'Escape The Dungeon',
@@ -20,6 +20,8 @@
 	let introImageSrc = $state('/intro_explainer.png');
 	let animationToken = 0;
 	let timeoutIds = [];
+	let introMusic = null;
+	let fadeInterval = null;
 
 	function clearTimers() {
 		for (const timeoutId of timeoutIds) {
@@ -39,9 +41,39 @@
 	}
 
 	function playClick() {
-		const audio = new Audio('/click.mp3');
+		const audio = new Audio('/sounds/click.mp3');
 		audio.volume = 0.6;
 		audio.play();
+	}
+
+	function fadeOutMusic(callback) {
+		if (!introMusic) {
+			callback();
+			return;
+		}
+
+		if (fadeInterval) {
+			clearInterval(fadeInterval);
+		}
+
+		fadeInterval = setInterval(() => {
+			if (!introMusic) {
+				clearInterval(fadeInterval);
+				fadeInterval = null;
+				callback();
+				return;
+			}
+
+			if (introMusic.volume > 0.05) {
+				introMusic.volume -= 0.05;
+			} else {
+				clearInterval(fadeInterval);
+				fadeInterval = null;
+				introMusic.pause();
+				introMusic.currentTime = 0;
+				callback();
+			}
+		}, 80);
 	}
 
 	function animateStage(index) {
@@ -93,6 +125,8 @@
 	}
 
 	function handleClick() {
+		playClick();
+
 		if (stage < MAX_STAGES) {
 			stage += 1;
 			return;
@@ -102,7 +136,7 @@
 			sessionStorage.setItem('introSeen', 'true');
 		}
 
-		goto('/');
+		fadeOutMusic(() => goto('/'));
 	}
 
 	function handleKeydown(event) {
@@ -122,8 +156,26 @@
 		animateStage(stage);
 	});
 
+	onMount(() => {
+		introMusic = new Audio('/sounds/intro.mp3');
+		introMusic.loop = true;
+		introMusic.volume = 0.5;
+		introMusic.play().catch(() => {});
+	});
+
 	onDestroy(() => {
 		clearTimers();
+
+		if (fadeInterval) {
+			clearInterval(fadeInterval);
+			fadeInterval = null;
+		}
+
+		if (introMusic) {
+			introMusic.pause();
+			introMusic.currentTime = 0;
+			introMusic = null;
+		}
 	});
 </script>
 
@@ -142,10 +194,7 @@
 	role="button"
 	tabindex="0"
 	aria-label="Continue intro"
-	onclick={() => {
-		playClick();
-		handleClick();
-	}}
+	onclick={handleClick}
 	onkeydown={handleKeydown}
 >
 	<div class="noise"></div>
