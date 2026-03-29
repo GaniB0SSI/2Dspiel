@@ -22,6 +22,7 @@
 	let timeoutIds = [];
 	let introMusic = null;
 	let fadeInterval = null;
+	let musicStarted = false;
 
 	function clearTimers() {
 		for (const timeoutId of timeoutIds) {
@@ -127,6 +128,11 @@
 	function handleClick() {
 		playClick();
 
+		if (!musicStarted && introMusic) {
+			introMusic.play().catch(() => {});
+			musicStarted = true;
+		}
+
 		if (stage < MAX_STAGES) {
 			stage += 1;
 			return;
@@ -160,7 +166,6 @@
 		introMusic = new Audio('/sounds/intro.mp3');
 		introMusic.loop = true;
 		introMusic.volume = 0.5;
-		introMusic.play().catch(() => {});
 	});
 
 	onDestroy(() => {
@@ -176,6 +181,8 @@
 			introMusic.currentTime = 0;
 			introMusic = null;
 		}
+
+		musicStarted = false;
 	});
 </script>
 
