@@ -4,8 +4,9 @@
 
 	let { level = 1 } = $props();
 
-	const WORLD_WIDTH = 800;
+	const WORLD_WIDTH = 1900;
 	const WORLD_HEIGHT = 600;
+	const VIEWPORT_WIDTH = 800;
 	const GRAVITY = 1500;
 	const MOVE_SPEED = 220;
 	const JUMP_SPEED = 560;
@@ -24,6 +25,7 @@
 	let jumpAudio = null;
 	let landAudio = null;
 	let runningSoundAudio = null;
+	let lives = $state(3);
 	const walkFrames = ['walking_pose1', 'standing_pose1', 'walking_pose2', 'standing_pose1'];
 
 	onMount(async () => {
@@ -140,17 +142,22 @@
 	function createGame() {
 		const Phaser = PhaserLib.default;
 		const levelData = levelConfigs[level];
+		const LEVEL_WORLD_WIDTH = levelData?.worldWidth ?? WORLD_WIDTH;
 
 		if (!levelData) return;
 
 		const config = {
 			type: Phaser.AUTO,
-			width: WORLD_WIDTH,
+			width: VIEWPORT_WIDTH,
 			height: WORLD_HEIGHT,
 			parent: `game-container-${level}`,
 			scene: {
 				preload() {
 					this.load.image('sky', '/sky.png');
+					if (level === 1) {
+						this.load.image('long_background', '/long_background.png');
+					}
+					this.load.image('enemy_standing', '/charachters/enemy/pjeter/enemy_standing.png');
 					this.load.image('standing_pose1', '/charachters/eni/standing_pose1.png');
 					this.load.image('walking_pose1', '/charachters/eni/walking_pose1.png');
 					this.load.image('walking_pose2', '/charachters/eni/walking_pose2.png');
@@ -159,14 +166,35 @@
 				},
 				create() {
 					levelComplete = false;
-					this.add.image(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 'sky');
+					lives = 3;
+					this.levelWorldWidth = LEVEL_WORLD_WIDTH;
+
+					if (level === 1) {
+						this.add.image(LEVEL_WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 'long_background');
+					} else {
+						this.add.image(LEVEL_WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 'sky');
+					}
 
 					this.solids = [];
 					this.hazards = [];
 					this.checkpointReached = false;
 
-					const floor = this.add.rectangle(400, 560, 800, 80, 0x4f7942);
-					this.solids.push({ x: 400, y: 560, width: 800, height: 80, visual: floor });
+					const floorY = level === 1 ? 600 : 560;
+					const floor = this.add.rectangle(
+						LEVEL_WORLD_WIDTH / 2,
+						floorY,
+						LEVEL_WORLD_WIDTH,
+						80,
+						0x4f7942
+					);
+					floor.setAlpha(0);
+					this.solids.push({
+						x: LEVEL_WORLD_WIDTH / 2,
+						y: floorY,
+						width: LEVEL_WORLD_WIDTH,
+						height: 80,
+						visual: floor
+					});
 
 					levelData.platforms.forEach((platformData) => {
 						const platform = this.add.rectangle(
@@ -177,6 +205,10 @@
 							platformData.color
 						);
 
+						if (platformData.invisible) {
+							platform.setAlpha(0);
+						}
+
 						this.solids.push({
 							x: platformData.x,
 							y: platformData.y,
@@ -185,6 +217,32 @@
 							visual: platform
 						});
 					});
+
+					this.enemies = [];
+
+					(levelData.enemies || []).forEach((enemyData) => {
+						const enemy = this.add.sprite(enemyData.x, enemyData.y, 'enemy_standing');
+						enemy.setOrigin(0.5, 0.5);
+						enemy.setDisplaySize(enemyData.width, enemyData.height);
+
+						this.enemies.push({
+							x: enemyData.x,
+							y: enemyData.y,
+							width: enemyData.width,
+							height: enemyData.height,
+							visual: enemy,
+							speed: 120,
+							hitCooldown: 0
+						});
+					});
+
+					this.livesText = this.add
+						.text(16, 16, '❤️ ❤️ ❤️', {
+							fontSize: '20px',
+							color: '#ff4444',
+							fontFamily: 'Press Start 2P'
+						})
+						.setScrollFactor(0);
 
 					levelData.hazards.forEach((hazardData) => {
 						const hazard = this.add.rectangle(
@@ -240,6 +298,7 @@
 					const player = this.add.sprite(levelData.respawn.x, levelData.respawn.y, 'standing_pose1');
 					player.setOrigin(0.5, 0.5);
 					player.setDisplaySize(PLAYER_DISPLAY_WIDTH, PLAYER_DISPLAY_HEIGHT);
+					player.setTint(0x888888);
 
 					this.player = player;
 					this.playerState = {
@@ -253,6 +312,9 @@
 						width: PLAYER_HITBOX_WIDTH,
 						height: PLAYER_HITBOX_HEIGHT
 					};
+
+					this.cameras.main.setBounds(0, 0, LEVEL_WORLD_WIDTH, WORLD_HEIGHT);
+					this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
 
 					this.cursors = this.input.keyboard.createCursorKeys();
 					this.wasd = this.input.keyboard.addKeys({
@@ -315,6 +377,7 @@
 					resolveVerticalMovement(this, dt, previousOnGround);
 					handleWorldBounds(this);
 					handleTriggers(this);
+					updateEnemies(this, dt);
 					syncPlayerSprite(this);
 					updatePlayerTexture(this, (moveLeft || moveRight) && !state.isCrouching);
 				}
@@ -382,6 +445,7 @@
 
 	function handleWorldBounds(scene) {
 		const state = scene.playerState;
+		const levelWorldWidth = scene.levelWorldWidth ?? WORLD_WIDTH;
 		const halfWidth = state.width / 2;
 		const halfHeight = state.height / 2;
 
@@ -390,8 +454,8 @@
 			state.vx = 0;
 		}
 
-		if (state.x + halfWidth > WORLD_WIDTH) {
-			state.x = WORLD_WIDTH - halfWidth;
+		if (state.x + halfWidth > levelWorldWidth) {
+			state.x = levelWorldWidth - halfWidth;
 			state.vx = 0;
 		}
 
@@ -432,6 +496,52 @@
 		}
 	}
 
+	function updateEnemies(scene, dt) {
+		if (!scene.enemies) return;
+
+		const state = scene.playerState;
+
+		for (const enemy of scene.enemies) {
+			if (state.x > enemy.x) {
+				enemy.x += enemy.speed * dt;
+				enemy.visual.setFlipX(false);
+			} else {
+				enemy.x -= enemy.speed * dt;
+				enemy.visual.setFlipX(true);
+			}
+
+			enemy.visual.setPosition(enemy.x, enemy.y);
+
+			if (enemy.hitCooldown > 0) {
+				enemy.hitCooldown -= dt;
+				return;
+			}
+
+			const enemyBounds = getRectBounds(enemy);
+			const playerBounds = getPlayerBounds(scene);
+
+			if (intersects(playerBounds, enemyBounds)) {
+				lives -= 1;
+				enemy.hitCooldown = 1.5;
+
+				const heartsMap = { 3: '❤️ ❤️ ❤️', 2: '❤️ ❤️', 1: '❤️', 0: '' };
+				if (scene.livesText) {
+					scene.livesText.setText(heartsMap[Math.max(lives, 0)] ?? '');
+				}
+
+				if (lives <= 0) {
+					lives = 3;
+					if (scene.livesText) scene.livesText.setText('❤️ ❤️ ❤️');
+					respawnPlayer(scene);
+				} else {
+					respawnPlayer(scene);
+				}
+
+				return;
+			}
+		}
+	}
+
 	function respawnPlayer(scene) {
 		scene.playerState.x = scene.respawnX;
 		scene.playerState.y = scene.respawnY;
@@ -440,6 +550,16 @@
 		scene.playerState.onGround = false;
 		scene.playerState.isCrouching = false;
 		stopWalkAnimation(scene);
+
+		const levelData = levelConfigs[level];
+		(levelData.enemies || []).forEach((enemyData, i) => {
+			if (scene.enemies[i]) {
+				scene.enemies[i].x = enemyData.x;
+				scene.enemies[i].y = enemyData.y;
+				scene.enemies[i].hitCooldown = 0;
+				scene.enemies[i].visual.setPosition(enemyData.x, enemyData.y);
+			}
+		});
 	}
 
 	function syncPlayerSprite(scene) {
