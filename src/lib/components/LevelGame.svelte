@@ -15,6 +15,7 @@
 	const PLAYER_DISPLAY_HEIGHT = 102;
 	const PLAYER_HITBOX_WIDTH = 38;
 	const PLAYER_HITBOX_HEIGHT = 90;
+	const BULLET_SPEED = 600;
 
 	let PhaserLib;
 	let game;
@@ -25,7 +26,9 @@
 	let jumpAudio = null;
 	let landAudio = null;
 	let runningSoundAudio = null;
+	let shootAudio = null;
 	let lives = $state(3);
+	let collectedItems = $state([]);
 	const walkFrames = ['walking_pose1', 'standing_pose1', 'walking_pose2', 'standing_pose1'];
 
 	onMount(async () => {
@@ -41,6 +44,8 @@
 		runningSoundAudio = new Audio('/sounds/running_sound.mp3');
 		runningSoundAudio.loop = true;
 		runningSoundAudio.volume = 0.5;
+		shootAudio = new Audio('/sounds/click.mp3');
+		shootAudio.volume = 0.6;
 		createGame();
 	});
 
@@ -59,6 +64,11 @@
 		if (landAudio) {
 			landAudio.pause();
 			landAudio = null;
+		}
+
+		if (shootAudio) {
+			shootAudio.pause();
+			shootAudio = null;
 		}
 
 		stopRunningSound();
@@ -169,13 +179,11 @@
 				create() {
 					levelComplete = false;
 					lives = 3;
+					collectedItems = [];
 					this.levelWorldWidth = LEVEL_WORLD_WIDTH;
-
-					if (level === 1) {
-						this.add.image(LEVEL_WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 'long_background');
-					} else {
-						this.add.image(LEVEL_WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 'sky');
-					}
+					this.bullets = [];
+					this.lastShotTime = 0;
+					this.shootCooldown = 0.1;
 
 					this.solids = [];
 					this.hazards = [];
@@ -236,7 +244,10 @@
 							speed: 60,
 							hitCooldown: 0,
 							walkFrame: 0,
-							walkTimer: 0
+							walkTimer: 0,
+							patrolLeft: enemyData.patrolLeft,
+							patrolRight: enemyData.patrolRight,
+							patrolDirection: 1
 						});
 					});
 
@@ -263,6 +274,28 @@
 							width: hazardData.width,
 							height: hazardData.height,
 							visual: hazard
+						});
+					});
+
+					this.collectables = [];
+
+					(levelData.collectables || []).forEach((collectableData) => {
+						const collectable = this.add.rectangle(
+							collectableData.x,
+							collectableData.y,
+							collectableData.width,
+							collectableData.height,
+							collectableData.color
+						);
+
+						this.collectables.push({
+							x: collectableData.x,
+							y: collectableData.y,
+							width: collectableData.width,
+							height: collectableData.height,
+							type: collectableData.type,
+							visual: collectable,
+							collected: false
 						});
 					});
 
@@ -325,7 +358,8 @@
 						up: Phaser.Input.Keyboard.KeyCodes.W,
 						down: Phaser.Input.Keyboard.KeyCodes.S,
 						left: Phaser.Input.Keyboard.KeyCodes.A,
-						right: Phaser.Input.Keyboard.KeyCodes.D
+					right: Phaser.Input.Keyboard.KeyCodes.D,
+					space: Phaser.Input.Keyboard.KeyCodes.SPACE
 					});
 
 					const onMoveKeyDown = () => {
@@ -380,8 +414,8 @@
 					resolveHorizontalMovement(this, dt);
 					resolveVerticalMovement(this, dt, previousOnGround);
 					handleWorldBounds(this);
-					handleTriggers(this);
-					updateEnemies(this, dt);
+					handleTriggers(this);				handleShooting(this, dt);
+				updateBullets(this, dt);					updateEnemies(this, dt);
 					syncPlayerSprite(this);
 					updatePlayerTexture(this, (moveLeft || moveRight) && !state.isCrouching);
 				}
@@ -483,6 +517,14 @@
 			}
 		}
 
+		for (const collectable of scene.collectables) {
+			if (!collectable.collected && intersects(playerBounds, getRectBounds(collectable))) {
+				collectable.collected = true;
+				collectable.visual.destroy();
+				collectedItems.push(collectable.type);
+			}
+		}
+
 		if (scene.checkpoint && intersects(playerBounds, getRectBounds(scene.checkpoint))) {
 			scene.respawnX = scene.checkpoint.x;
 			scene.respawnY = scene.checkpoint.y - PLAYER_HITBOX_HEIGHT / 2;
@@ -508,16 +550,40 @@
 		const levelWorldWidth = scene.levelWorldWidth ?? WORLD_WIDTH;
 
 		for (const enemy of scene.enemies) {
-			const dx = state.x - enemy.x;
-			const deadZone = 10;
 			const previousX = enemy.x;
 
-			if (dx > deadZone) {
-				enemy.x += enemy.speed * dt;
-				enemy.visual.setFlipX(false);
-			} else if (dx < -deadZone) {
-				enemy.x -= enemy.speed * dt;
-				enemy.visual.setFlipX(true);
+			// Handle patrol or chase behavior
+			if (enemy.patrolLeft !== undefined && enemy.patrolRight !== undefined) {
+				// Patrol behavior: move between boundaries
+				if (enemy.patrolDirection > 0) {
+					enemy.x += enemy.speed * dt;
+					enemy.visual.setFlipX(false);
+
+					if (enemy.x >= enemy.patrolRight) {
+						enemy.x = enemy.patrolRight;
+						enemy.patrolDirection = -1;
+					}
+				} else {
+					enemy.x -= enemy.speed * dt;
+					enemy.visual.setFlipX(true);
+
+					if (enemy.x <= enemy.patrolLeft) {
+						enemy.x = enemy.patrolLeft;
+						enemy.patrolDirection = 1;
+					}
+				}
+			} else {
+				// Chase behavior (original): follow the player
+				const dx = state.x - enemy.x;
+				const deadZone = 10;
+
+				if (dx > deadZone) {
+					enemy.x += enemy.speed * dt;
+					enemy.visual.setFlipX(false);
+				} else if (dx < -deadZone) {
+					enemy.x -= enemy.speed * dt;
+					enemy.visual.setFlipX(true);
+				}
 			}
 
 			for (const solid of scene.solids) {
@@ -577,6 +643,72 @@
 		}
 	}
 
+	function handleShooting(scene, dt) {
+		if (!scene.wasd || collectedItems.length === 0) return;
+
+		scene.lastShotTime += dt;
+
+		if (scene.wasd.space.isDown && scene.lastShotTime >= scene.shootCooldown) {
+			const state = scene.playerState;
+			const bulletX = state.x + (state.facingLeft ? -20 : 20);
+			const bulletVx = state.facingLeft ? -BULLET_SPEED : BULLET_SPEED;
+
+			scene.bullets.push({
+				x: bulletX,
+				y: state.y - 10,
+				vx: bulletVx,
+				width: 12,
+				height: 6,
+				visual: scene.add.rectangle(bulletX, state.y - 10, 12, 6, 0xffff00)
+			});
+
+			scene.lastShotTime = 0;
+
+			if (shootAudio) {
+				shootAudio.currentTime = 0;
+				shootAudio.play();
+			}
+		}
+	}
+
+	function updateBullets(scene, dt) {
+		if (!scene.bullets) return;
+
+		const levelWorldWidth = scene.levelWorldWidth ?? WORLD_WIDTH;
+
+		for (let i = scene.bullets.length - 1; i >= 0; i--) {
+			const bullet = scene.bullets[i];
+			bullet.x += bullet.vx * dt;
+			bullet.visual.setPosition(bullet.x, bullet.y);
+
+			// Remove bullet if out of bounds
+			if (bullet.x < 0 || bullet.x > levelWorldWidth) {
+				bullet.visual.destroy();
+				scene.bullets.splice(i, 1);
+				continue;
+			}
+
+			// Check collision with enemies
+			const bulletBounds = getRectBounds(bullet);
+
+			for (let j = scene.enemies.length - 1; j >= 0; j--) {
+				const enemy = scene.enemies[j];
+				const enemyBounds = getRectBounds(enemy);
+
+				if (intersects(bulletBounds, enemyBounds)) {
+					// Remove bullet
+					bullet.visual.destroy();
+					scene.bullets.splice(i, 1);
+
+					// Remove enemy
+					enemy.visual.destroy();
+					scene.enemies.splice(j, 1);
+					break;
+				}
+			}
+		}
+	}
+
 	function respawnPlayer(scene) {
 		scene.playerState.x = scene.respawnX;
 		scene.playerState.y = scene.respawnY;
@@ -586,13 +718,75 @@
 		scene.playerState.isCrouching = false;
 		stopWalkAnimation(scene);
 
+		// Clear bullets
+		for (const bullet of scene.bullets) {
+			bullet.visual.destroy();
+		}
+		scene.bullets = [];
+
 		const levelData = levelConfigs[level];
+		
+		// Reset enemies (recreate ones that were destroyed)
+		const existingEnemies = scene.enemies.length;
 		(levelData.enemies || []).forEach((enemyData, i) => {
 			if (scene.enemies[i]) {
+				// Reset existing enemy
 				scene.enemies[i].x = enemyData.x;
 				scene.enemies[i].y = enemyData.y;
 				scene.enemies[i].hitCooldown = 0;
+				scene.enemies[i].patrolDirection = 1;
 				scene.enemies[i].visual.setPosition(enemyData.x, enemyData.y);
+			} else {
+				// Recreate destroyed enemy
+				const enemy = scene.add.sprite(enemyData.x, enemyData.y, 'enemy_standing');
+				enemy.setOrigin(0.5, 0.5);
+				enemy.setDisplaySize(enemyData.width, enemyData.height);
+
+				scene.enemies[i] = {
+					x: enemyData.x,
+					y: enemyData.y,
+					width: enemyData.width,
+					height: enemyData.height,
+					visual: enemy,
+					speed: 60,
+					hitCooldown: 0,
+					walkFrame: 0,
+					walkTimer: 0,
+					patrolLeft: enemyData.patrolLeft,
+					patrolRight: enemyData.patrolRight,
+					patrolDirection: 1
+				};
+			}
+		});
+
+		// Reset uncollected items on respawn
+		(levelData.collectables || []).forEach((collectableData, i) => {
+			if (scene.collectables[i] && !scene.collectables[i].collected) {
+				return;
+			}
+
+			if (scene.collectables[i]) {
+				scene.collectables[i].visual.destroy();
+			}
+
+			if (!scene.collectables[i] && collectableData) {
+				const collectable = scene.add.rectangle(
+					collectableData.x,
+					collectableData.y,
+					collectableData.width,
+					collectableData.height,
+					collectableData.color
+				);
+
+				scene.collectables[i] = {
+					x: collectableData.x,
+					y: collectableData.y,
+					width: collectableData.width,
+					height: collectableData.height,
+					type: collectableData.type,
+					visual: collectable,
+					collected: false
+				};
 			}
 		});
 	}
@@ -629,13 +823,35 @@
 
 <div class="game-shell">
 	<div id={"game-container-" + level} class="game-container"></div>
+	<div class="collectables-display">
+		<div class="display-row">
+			<div>
+				<p class="collectables-label">Weapons:</p>
+				<div class="collectables-list">
+					{#each collectedItems as item (item)}
+						<span class="collectable-item gun-item">🔫</span>
+					{/each}
+					{#if collectedItems.length === 0}
+						<span class="collectable-empty">None</span>
+					{/if}
+				</div>
+			</div>
+			{#if collectedItems.length > 0}
+				<div class="shoot-info">
+					<p class="shoot-label">PRESS SPACE TO SHOOT</p>
+				</div>
+			{/if}
+		</div>
+	</div>
 </div>
 
 <style>
 	.game-shell {
 		width: 100%;
 		display: flex;
-		justify-content: center;
+		flex-direction: column;
+		align-items: center;
+		gap: 16px;
 	}
 
 	.game-container {
@@ -651,9 +867,77 @@
 		height: auto;
 	}
 
+	.collectables-display {
+		width: min(100%, 800px);
+		padding: 12px 16px;
+		background: rgba(0, 0, 0, 0.8);
+		border: 2px solid #fbbf24;
+		border-radius: 4px;
+		font-family: 'Press Start 2P', monospace;
+		font-size: 0.75rem;
+		color: #fbbf24;
+	}
+
+	.display-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 16px;
+	}
+
+	.collectables-label {
+		margin: 0 0 8px 0;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+	}
+
+	.collectables-list {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+		flex-wrap: wrap;
+		min-height: 24px;
+	}
+
+	.collectable-item {
+		font-size: 1.5rem;
+		display: inline-block;
+	}
+
+	.collectable-empty {
+		color: #888;
+		font-size: 0.75rem;
+	}
+
+	.shoot-info {
+		text-align: right;
+	}
+
+	.shoot-label {
+		margin: 0;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		font-size: 0.65rem;
+		color: #ff6b6b;
+		animation: pulse 1.5s infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.6;
+		}
+	}
+
 	@media (max-width: 720px) {
 		.game-container {
 			min-height: auto;
+		}
+
+		.collectables-display {
+			width: 100%;
 		}
 	}
 </style>
