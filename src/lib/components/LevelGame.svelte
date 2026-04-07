@@ -4,63 +4,199 @@
 
 	let { level = 1 } = $props();
 
+	const WORLD_WIDTH = 1900;
+	const WORLD_HEIGHT = 600;
+	const VIEWPORT_WIDTH = 800;
+	const GRAVITY = 1500;
+	const MOVE_SPEED = 220;
+	const JUMP_SPEED = 560;
+	const WALK_ANIMATION_SPEED = 150;
+	const PLAYER_DISPLAY_WIDTH = 64;
+	const PLAYER_DISPLAY_HEIGHT = 102;
+	const PLAYER_HITBOX_WIDTH = 38;
+	const PLAYER_HITBOX_HEIGHT = 90;
+
 	let PhaserLib;
 	let game;
 	let levelComplete = false;
+	let walkFrame = 0;
+	let walkInterval = null;
+	let backgroundAudio = null;
+	let jumpAudio = null;
+	let landAudio = null;
+	let runningSoundAudio = null;
+	let lives = $state(3);
+	const walkFrames = ['walking_pose1', 'standing_pose1', 'walking_pose2', 'standing_pose1'];
 
 	onMount(async () => {
 		PhaserLib = await import('phaser');
+		backgroundAudio = new Audio('/sounds/backgroundsound.wav');
+		backgroundAudio.loop = true;
+		backgroundAudio.volume = 0.4;
+		backgroundAudio.play();
+		jumpAudio = new Audio('/sounds/swing.mp3');
+		jumpAudio.volume = 0.5;
+		landAudio = new Audio('/sounds/land.wav');
+		landAudio.volume = 0.5;
+		runningSoundAudio = new Audio('/sounds/running_sound.mp3');
+		runningSoundAudio.loop = true;
+		runningSoundAudio.volume = 0.5;
 		createGame();
 	});
 
 	onDestroy(() => {
+		if (backgroundAudio) {
+			backgroundAudio.pause();
+			backgroundAudio.currentTime = 0;
+			backgroundAudio = null;
+		}
+
+		if (jumpAudio) {
+			jumpAudio.pause();
+			jumpAudio = null;
+		}
+
+		if (landAudio) {
+			landAudio.pause();
+			landAudio = null;
+		}
+
+		stopRunningSound();
+		stopWalkAnimation();
+
 		if (game) {
 			game.destroy(true);
 		}
 	});
 
+	function startRunningSound() {
+		if (!runningSoundAudio || !runningSoundAudio.paused) return;
+		runningSoundAudio.play();
+	}
+
+	function stopRunningSound() {
+		if (!runningSoundAudio) return;
+		runningSoundAudio.pause();
+		runningSoundAudio.currentTime = 0;
+	}
+
+	function startWalkAnimation(scene) {
+		if (!scene?.player) return;
+
+		if (!walkInterval) {
+			walkFrame = (walkFrame + 1) % walkFrames.length;
+			scene.player.setTexture(walkFrames[walkFrame]);
+		}
+
+		if (walkInterval) return;
+
+		walkInterval = setInterval(() => {
+			if (!scene.player || levelComplete) return;
+
+			walkFrame = (walkFrame + 1) % walkFrames.length;
+			scene.player.setTexture(walkFrames[walkFrame]);
+		}, WALK_ANIMATION_SPEED);
+	}
+
+	function stopWalkAnimation(scene, resetToStanding = true) {
+		if (walkInterval) {
+			clearInterval(walkInterval);
+			walkInterval = null;
+		}
+
+		walkFrame = 0;
+
+		if (scene?.player && resetToStanding) {
+			scene.player.setTexture('standing_pose1');
+		}
+	}
+
+	function setCrouchState(scene, shouldCrouch) {
+		const state = scene.playerState;
+
+		if (shouldCrouch === state.isCrouching) return;
+
+		state.isCrouching = shouldCrouch;
+
+		if (shouldCrouch) {
+			stopWalkAnimation(scene, false);
+			scene.player.setTexture('crouching_pose1');
+		} else {
+			scene.player.setTexture('standing_pose1');
+		}
+	}
+
+	function getRectBounds(entity) {
+		return {
+			left: entity.x - entity.width / 2,
+			right: entity.x + entity.width / 2,
+			top: entity.y - entity.height / 2,
+			bottom: entity.y + entity.height / 2
+		};
+	}
+
+	function intersects(a, b) {
+		return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+	}
+
 	function createGame() {
 		const Phaser = PhaserLib.default;
 		const levelData = levelConfigs[level];
+		const LEVEL_WORLD_WIDTH = levelData?.worldWidth ?? WORLD_WIDTH;
 
 		if (!levelData) return;
 
 		const config = {
 			type: Phaser.AUTO,
-			width: 800,
-			height: 600,
+			width: VIEWPORT_WIDTH,
+			height: WORLD_HEIGHT,
 			parent: `game-container-${level}`,
-			physics: {
-				default: 'arcade',
-				arcade: {
-					gravity: { y: 800 },
-					debug: false
-				}
-			},
 			scene: {
 				preload() {
 					this.load.image('sky', '/sky.png');
-					this.load.image('standing_pose1', '/standing_pose1.png');
-					this.load.image('walking_pose1', '/walking_pose1.png');
-					this.load.image('jumping_pose1', '/jumping_pose1.png');
+					if (level === 1) {
+						this.load.image('long_background', '/long_background.png');
+					}
+					this.load.image('enemy_standing', '/charachters/enemy/pjeter/enemy_standing.png');
+					this.load.image('enemy_moving', '/charachters/enemy/pjeter/enemy_moving.png');
+					this.load.image('enemy_moving1', '/charachters/enemy/pjeter/enemy_moving1.png');
+					this.load.image('standing_pose1', '/charachters/eni/standing_pose1.png');
+					this.load.image('walking_pose1', '/charachters/eni/walking_pose1.png');
+					this.load.image('walking_pose2', '/charachters/eni/walking_pose2.png');
+					this.load.image('jumping_pose1', '/charachters/eni/jumping_pose1.png');
+					this.load.image('crouching_pose1', '/charachters/eni/crouching_pose1.png');
 				},
 				create() {
 					levelComplete = false;
-					this.add.image(400, 300, 'sky');
+					lives = 3;
+					this.levelWorldWidth = LEVEL_WORLD_WIDTH;
 
-					const floor = this.add.rectangle(400, 560, 800, 80, 0x4f7942);
-					this.physics.add.existing(floor, true);
+					if (level === 1) {
+						this.add.image(LEVEL_WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 'long_background');
+					} else {
+						this.add.image(LEVEL_WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 'sky');
+					}
 
-					this.respawnX = levelData.respawn.x;
-					this.respawnY = levelData.respawn.y;
+					this.solids = [];
+					this.hazards = [];
+					this.checkpointReached = false;
 
-					const player = this.physics.add.sprite(levelData.respawn.x, levelData.respawn.y, 'standing_pose1');
-					player.setOrigin(0.5, 0.5);
-					player.setDisplaySize(40, 60);
-					player.body.setSize(40, 60);
-					player.body.setCollideWorldBounds(true);
-
-					this.physics.add.collider(player, floor);
+					const floorY = level === 1 ? 600 : 560;
+					const floor = this.add.rectangle(
+						LEVEL_WORLD_WIDTH / 2,
+						floorY,
+						LEVEL_WORLD_WIDTH,
+						80,
+						0x4f7942
+					);
+					floor.setAlpha(0);
+					this.solids.push({
+						x: LEVEL_WORLD_WIDTH / 2,
+						y: floorY,
+						width: LEVEL_WORLD_WIDTH,
+						height: 80,
+						visual: floor
+					});
 
 					levelData.platforms.forEach((platformData) => {
 						const platform = this.add.rectangle(
@@ -70,9 +206,47 @@
 							platformData.height,
 							platformData.color
 						);
-						this.physics.add.existing(platform, true);
-						this.physics.add.collider(player, platform);
+
+						if (platformData.invisible) {
+							platform.setAlpha(0);
+						}
+
+						this.solids.push({
+							x: platformData.x,
+							y: platformData.y,
+							width: platformData.width,
+							height: platformData.height,
+							visual: platform
+						});
 					});
+
+					this.enemies = [];
+
+					(levelData.enemies || []).forEach((enemyData) => {
+						const enemy = this.add.sprite(enemyData.x, enemyData.y, 'enemy_standing');
+						enemy.setOrigin(0.5, 0.5);
+						enemy.setDisplaySize(enemyData.width, enemyData.height);
+
+						this.enemies.push({
+							x: enemyData.x,
+							y: enemyData.y,
+							width: enemyData.width,
+							height: enemyData.height,
+							visual: enemy,
+							speed: 60,
+							hitCooldown: 0,
+							walkFrame: 0,
+							walkTimer: 0
+						});
+					});
+
+					this.livesText = this.add
+						.text(16, 16, '❤️ ❤️ ❤️', {
+							fontSize: '20px',
+							color: '#ff4444',
+							fontFamily: 'Press Start 2P'
+						})
+						.setScrollFactor(0);
 
 					levelData.hazards.forEach((hazardData) => {
 						const hazard = this.add.rectangle(
@@ -82,90 +256,374 @@
 							hazardData.height,
 							0xd62828
 						);
-						this.physics.add.existing(hazard, true);
-						this.physics.add.overlap(player, hazard, () => {
-							if (levelComplete) return;
-							player.body.stop();
-							player.setPosition(this.respawnX, this.respawnY);
+
+						this.hazards.push({
+							x: hazardData.x,
+							y: hazardData.y,
+							width: hazardData.width,
+							height: hazardData.height,
+							visual: hazard
 						});
 					});
 
-					const checkpoint = this.add.rectangle(
-						levelData.checkpoint.x,
-						levelData.checkpoint.y,
-						levelData.checkpoint.width,
-						levelData.checkpoint.height,
-						0xffff00
-					);
-					this.physics.add.existing(checkpoint, true);
+					const checkpointData = levelData.checkpoint;
+					this.checkpoint = {
+						x: checkpointData.x,
+						y: checkpointData.y,
+						width: checkpointData.width,
+						height: checkpointData.height,
+						visual: this.add.rectangle(
+							checkpointData.x,
+							checkpointData.y,
+							checkpointData.width,
+							checkpointData.height,
+							0xffff00
+						)
+					};
 
-					this.physics.add.overlap(
-						player,
-						checkpoint,
-						() => {
-							this.respawnX = checkpoint.x;
-							this.respawnY = checkpoint.y - 20;
-						},
-						null,
-						this
-					);
+					const finishData = levelData.finish;
+					this.finish = {
+						x: finishData.x,
+						y: finishData.y,
+						width: finishData.width,
+						height: finishData.height,
+						visual: this.add.rectangle(
+							finishData.x,
+							finishData.y,
+							finishData.width,
+							finishData.height,
+							0x2a9d8f
+						)
+					};
 
-					const finish = this.add.rectangle(
-						levelData.finish.x,
-						levelData.finish.y,
-						levelData.finish.width,
-						levelData.finish.height,
-						0x2a9d8f
-					);
-					this.physics.add.existing(finish, true);
+					this.respawnX = levelData.respawn.x;
+					this.respawnY = levelData.respawn.y;
 
-					this.physics.add.overlap(player, finish, () => {
-						if (levelComplete) return;
-						levelComplete = true;
-						player.body.stop();
-						this.add.text(265, 60, `${levelData.label} Complete!`, {
-							fontSize: '32px',
-							color: '#1b4332'
-						});
-					});
+					const player = this.add.sprite(levelData.respawn.x, levelData.respawn.y, 'standing_pose1');
+					player.setOrigin(0.5, 0.5);
+					player.setDisplaySize(PLAYER_DISPLAY_WIDTH, PLAYER_DISPLAY_HEIGHT);
+					player.setTint(0x888888);
 
 					this.player = player;
+					this.playerState = {
+						x: levelData.respawn.x,
+						y: levelData.respawn.y,
+						vx: 0,
+						vy: 0,
+						onGround: false,
+						isCrouching: false,
+						facingLeft: false,
+						width: PLAYER_HITBOX_WIDTH,
+						height: PLAYER_HITBOX_HEIGHT
+					};
+
+					this.cameras.main.setBounds(0, 0, LEVEL_WORLD_WIDTH, WORLD_HEIGHT);
+					this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+
 					this.cursors = this.input.keyboard.createCursorKeys();
+					this.wasd = this.input.keyboard.addKeys({
+						up: Phaser.Input.Keyboard.KeyCodes.W,
+						down: Phaser.Input.Keyboard.KeyCodes.S,
+						left: Phaser.Input.Keyboard.KeyCodes.A,
+						right: Phaser.Input.Keyboard.KeyCodes.D
+					});
+
+					const onMoveKeyDown = () => {
+						if (this.playerState.isCrouching || !this.playerState.onGround) return;
+
+						walkFrame = (walkFrame + 1) % walkFrames.length;
+						this.player.setTexture(walkFrames[walkFrame]);
+						startWalkAnimation(this);
+					};
+
+					this.cursors.left.on('down', onMoveKeyDown);
+					this.cursors.right.on('down', onMoveKeyDown);
+					this.wasd.left.on('down', onMoveKeyDown);
+					this.wasd.right.on('down', onMoveKeyDown);
 				},
-				update() {
-					if (!this.player || !this.cursors || levelComplete) return;
+				update(_, deltaMs) {
+					if (!this.player || !this.cursors || !this.wasd || levelComplete) return;
 
-					if (this.cursors.left.isDown) {
-						this.player.body.setVelocityX(-200);
-					} else if (this.cursors.right.isDown) {
-						this.player.body.setVelocityX(200);
+					const dt = Math.min(deltaMs / 1000, 1 / 30);
+					const state = this.playerState;
+					const previousOnGround = state.onGround;
+					const moveLeft = this.cursors.left.isDown || this.wasd.left.isDown;
+					const moveRight = this.cursors.right.isDown || this.wasd.right.isDown;
+					const crouchPressed = this.cursors.down.isDown || this.wasd.down.isDown;
+					const jumpPressed = this.cursors.up.isDown || this.wasd.up.isDown;
+
+					if (crouchPressed && previousOnGround) {
+						setCrouchState(this, true);
+					} else if (state.isCrouching) {
+						setCrouchState(this, false);
+					}
+
+					if (moveLeft) {
+						state.vx = state.isCrouching ? 0 : -MOVE_SPEED;
+						state.facingLeft = true;
+					} else if (moveRight) {
+						state.vx = state.isCrouching ? 0 : MOVE_SPEED;
+						state.facingLeft = false;
 					} else {
-						this.player.body.setVelocityX(0);
+						state.vx = 0;
 					}
 
-					if (this.cursors.up.isDown && this.player.body.blocked.down) {
-						this.player.body.setVelocityY(-450);
+					if (jumpPressed && previousOnGround && !state.isCrouching) {
+						state.vy = -JUMP_SPEED;
+						state.onGround = false;
+						if (jumpAudio) {
+							jumpAudio.currentTime = 0;
+							jumpAudio.play();
+						}
 					}
 
-					if (this.player.y > 600) {
-						this.player.setPosition(this.respawnX, this.respawnY);
-						this.player.body.setVelocity(0, 0);
-					}
-
-					const onGround = this.player.body.blocked.down;
-
-					if (!onGround) {
-						this.player.setTexture('jumping_pose1');
-					} else if (this.player.body.velocity.x !== 0) {
-						this.player.setTexture('walking_pose1');
-					} else {
-						this.player.setTexture('standing_pose1');
-					}
+					resolveHorizontalMovement(this, dt);
+					resolveVerticalMovement(this, dt, previousOnGround);
+					handleWorldBounds(this);
+					handleTriggers(this);
+					updateEnemies(this, dt);
+					syncPlayerSprite(this);
+					updatePlayerTexture(this, (moveLeft || moveRight) && !state.isCrouching);
 				}
 			}
 		};
 
 		game = new Phaser.Game(config);
+	}
+
+	function getPlayerBounds(scene) {
+		return getRectBounds(scene.playerState);
+	}
+
+	function resolveHorizontalMovement(scene, dt) {
+		const state = scene.playerState;
+		state.x += state.vx * dt;
+
+		let playerBounds = getPlayerBounds(scene);
+
+		for (const solid of scene.solids) {
+			const solidBounds = getRectBounds(solid);
+
+			if (!intersects(playerBounds, solidBounds)) continue;
+
+			if (state.vx > 0) {
+				state.x = solidBounds.left - state.width / 2;
+			} else if (state.vx < 0) {
+				state.x = solidBounds.right + state.width / 2;
+			}
+
+			state.vx = 0;
+			playerBounds = getPlayerBounds(scene);
+		}
+	}
+
+	function resolveVerticalMovement(scene, dt, previousOnGround) {
+		const state = scene.playerState;
+		state.vy += GRAVITY * dt;
+		state.y += state.vy * dt;
+		state.onGround = false;
+
+		let playerBounds = getPlayerBounds(scene);
+
+		for (const solid of scene.solids) {
+			const solidBounds = getRectBounds(solid);
+
+			if (!intersects(playerBounds, solidBounds)) continue;
+
+			if (state.vy > 0) {
+				state.y = solidBounds.top - state.height / 2;
+				state.vy = 0;
+				state.onGround = true;
+				if (landAudio && !previousOnGround) {
+					landAudio.currentTime = 0;
+					landAudio.play();
+				}
+			} else if (state.vy < 0) {
+				state.y = solidBounds.bottom + state.height / 2;
+				state.vy = 0;
+			}
+
+			playerBounds = getPlayerBounds(scene);
+		}
+	}
+
+	function handleWorldBounds(scene) {
+		const state = scene.playerState;
+		const levelWorldWidth = scene.levelWorldWidth ?? WORLD_WIDTH;
+		const halfWidth = state.width / 2;
+		const halfHeight = state.height / 2;
+
+		if (state.x - halfWidth < 0) {
+			state.x = halfWidth;
+			state.vx = 0;
+		}
+
+		if (state.x + halfWidth > levelWorldWidth) {
+			state.x = levelWorldWidth - halfWidth;
+			state.vx = 0;
+		}
+
+		if (state.y - halfHeight < 0) {
+			state.y = halfHeight;
+			state.vy = 0;
+		}
+
+		if (state.y - halfHeight > WORLD_HEIGHT) {
+			respawnPlayer(scene);
+		}
+	}
+
+	function handleTriggers(scene) {
+		const playerBounds = getPlayerBounds(scene);
+
+		for (const hazard of scene.hazards) {
+			if (intersects(playerBounds, getRectBounds(hazard))) {
+				respawnPlayer(scene);
+				return;
+			}
+		}
+
+		if (scene.checkpoint && intersects(playerBounds, getRectBounds(scene.checkpoint))) {
+			scene.respawnX = scene.checkpoint.x;
+			scene.respawnY = scene.checkpoint.y - PLAYER_HITBOX_HEIGHT / 2;
+			scene.checkpointReached = true;
+		}
+
+		if (scene.finish && intersects(playerBounds, getRectBounds(scene.finish))) {
+			levelComplete = true;
+			scene.playerState.vx = 0;
+			scene.playerState.vy = 0;
+			scene.add.text(265, 60, `${levelConfigs[level].label} Complete!`, {
+				fontSize: '32px',
+				color: '#1b4332'
+			});
+		}
+	}
+
+	function updateEnemies(scene, dt) {
+		if (!scene.enemies) return;
+
+		const state = scene.playerState;
+		const enemyWalkFrames = ['enemy_moving', 'enemy_standing', 'enemy_moving1', 'enemy_standing'];
+		const levelWorldWidth = scene.levelWorldWidth ?? WORLD_WIDTH;
+
+		for (const enemy of scene.enemies) {
+			const dx = state.x - enemy.x;
+			const deadZone = 10;
+			const previousX = enemy.x;
+
+			if (dx > deadZone) {
+				enemy.x += enemy.speed * dt;
+				enemy.visual.setFlipX(false);
+			} else if (dx < -deadZone) {
+				enemy.x -= enemy.speed * dt;
+				enemy.visual.setFlipX(true);
+			}
+
+			for (const solid of scene.solids) {
+				if (solid.width >= levelWorldWidth) continue;
+
+				const solidBounds = getRectBounds(solid);
+				const enemyBounds = getRectBounds(enemy);
+
+				if (!intersects(enemyBounds, solidBounds)) continue;
+
+				if (enemy.x > previousX) {
+					enemy.x = solidBounds.left - enemy.width / 2;
+				} else if (enemy.x < previousX) {
+					enemy.x = solidBounds.right + enemy.width / 2;
+				}
+			}
+
+			enemy.x = Math.max(enemy.width / 2, Math.min(levelWorldWidth - enemy.width / 2, enemy.x));
+
+			enemy.walkTimer += dt * 1000;
+
+			if (enemy.walkTimer >= 150) {
+				enemy.walkTimer = 0;
+				enemy.walkFrame = (enemy.walkFrame + 1) % enemyWalkFrames.length;
+				enemy.visual.setTexture(enemyWalkFrames[enemy.walkFrame]);
+			}
+
+			enemy.visual.setPosition(enemy.x, enemy.y);
+
+			if (enemy.hitCooldown > 0) {
+				enemy.hitCooldown -= dt;
+				return;
+			}
+
+			const enemyBounds = getRectBounds(enemy);
+			const playerBounds = getPlayerBounds(scene);
+
+			if (intersects(playerBounds, enemyBounds)) {
+				lives -= 1;
+				enemy.hitCooldown = 1.5;
+
+				const heartsMap = { 3: '❤️ ❤️ ❤️', 2: '❤️ ❤️', 1: '❤️', 0: '' };
+				if (scene.livesText) {
+					scene.livesText.setText(heartsMap[Math.max(lives, 0)] ?? '');
+				}
+
+				if (lives <= 0) {
+					lives = 3;
+					if (scene.livesText) scene.livesText.setText('❤️ ❤️ ❤️');
+					respawnPlayer(scene);
+				} else {
+					respawnPlayer(scene);
+				}
+
+				return;
+			}
+		}
+	}
+
+	function respawnPlayer(scene) {
+		scene.playerState.x = scene.respawnX;
+		scene.playerState.y = scene.respawnY;
+		scene.playerState.vx = 0;
+		scene.playerState.vy = 0;
+		scene.playerState.onGround = false;
+		scene.playerState.isCrouching = false;
+		stopWalkAnimation(scene);
+
+		const levelData = levelConfigs[level];
+		(levelData.enemies || []).forEach((enemyData, i) => {
+			if (scene.enemies[i]) {
+				scene.enemies[i].x = enemyData.x;
+				scene.enemies[i].y = enemyData.y;
+				scene.enemies[i].hitCooldown = 0;
+				scene.enemies[i].visual.setPosition(enemyData.x, enemyData.y);
+			}
+		});
+	}
+
+	function syncPlayerSprite(scene) {
+		scene.player.setPosition(scene.playerState.x, scene.playerState.y);
+		scene.player.setFlipX(scene.playerState.facingLeft);
+	}
+
+	function updatePlayerTexture(scene, isMoving) {
+		const state = scene.playerState;
+
+		if (!state.onGround) {
+			if (state.isCrouching) {
+				setCrouchState(scene, false);
+			}
+
+			stopRunningSound();
+			stopWalkAnimation(scene, false);
+			scene.player.setTexture('jumping_pose1');
+		} else if (state.isCrouching) {
+			stopRunningSound();
+			stopWalkAnimation(scene, false);
+			scene.player.setTexture('crouching_pose1');
+		} else if (isMoving) {
+			startRunningSound();
+			startWalkAnimation(scene);
+		} else {
+			stopRunningSound();
+			stopWalkAnimation(scene);
+		}
 	}
 </script>
 
@@ -183,7 +641,6 @@
 	.game-container {
 		width: min(100%, 800px);
 		min-height: 600px;
-		border-radius: 24px;
 		overflow: hidden;
 		box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
 	}

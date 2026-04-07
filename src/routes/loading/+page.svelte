@@ -4,6 +4,12 @@
 	const level = page.url.searchParams.get('level');
 	const targetPath = level === '1' ? '/level1' : level === '2' ? '/level2' : null;
 	const levelLabel = level === '1' ? 'Level 1' : level === '2' ? 'Level 2' : null;
+
+	function playClick() {
+		const audio = new Audio('/sounds/click.mp3');
+		audio.volume = 0.6;
+		audio.play();
+	}
 </script>
 
 <svelte:head>
@@ -24,15 +30,15 @@
 			<h1>{levelLabel}</h1>
 			<p class="description">Press Play to open the selected level.</p>
 			<div class="actions">
-				<a class="button primary" href={targetPath}>Play</a>
-				<a class="button secondary" href="/">Back</a>
+				<a class="button primary" href={targetPath} onclick={playClick}>Play</a>
+				<a class="button secondary" href="/" onclick={playClick}>Back</a>
 			</div>
 		{:else}
 			<p class="eyebrow">Loading Page</p>
 			<h1>Level Not Found</h1>
 			<p class="description">Choose Level 1 or Level 2 from the home page.</p>
 			<div class="actions">
-				<a class="button secondary" href="/">Back To Menu</a>
+				<a class="button secondary" href="/" onclick={playClick}>Back To Menu</a>
 			</div>
 		{/if}
 	</div>
