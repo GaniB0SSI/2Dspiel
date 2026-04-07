@@ -185,6 +185,12 @@
 					this.lastShotTime = 0;
 					this.shootCooldown = 0.1;
 
+					if (level === 1) {
+						this.add.image(LEVEL_WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 'long_background');
+					} else {
+						this.add.image(LEVEL_WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 'sky');
+					}
+
 					this.solids = [];
 					this.hazards = [];
 					this.checkpointReached = false;
