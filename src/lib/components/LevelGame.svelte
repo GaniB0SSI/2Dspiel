@@ -158,6 +158,8 @@
 						this.load.image('long_background', '/long_background.png');
 					}
 					this.load.image('enemy_standing', '/charachters/enemy/pjeter/enemy_standing.png');
+					this.load.image('enemy_moving', '/charachters/enemy/pjeter/enemy_moving.png');
+					this.load.image('enemy_moving1', '/charachters/enemy/pjeter/enemy_moving1.png');
 					this.load.image('standing_pose1', '/charachters/eni/standing_pose1.png');
 					this.load.image('walking_pose1', '/charachters/eni/walking_pose1.png');
 					this.load.image('walking_pose2', '/charachters/eni/walking_pose2.png');
@@ -231,8 +233,10 @@
 							width: enemyData.width,
 							height: enemyData.height,
 							visual: enemy,
-							speed: 120,
-							hitCooldown: 0
+							speed: 60,
+							hitCooldown: 0,
+							walkFrame: 0,
+							walkTimer: 0
 						});
 					});
 
@@ -500,14 +504,45 @@
 		if (!scene.enemies) return;
 
 		const state = scene.playerState;
+		const enemyWalkFrames = ['enemy_moving', 'enemy_standing', 'enemy_moving1', 'enemy_standing'];
+		const levelWorldWidth = scene.levelWorldWidth ?? WORLD_WIDTH;
 
 		for (const enemy of scene.enemies) {
-			if (state.x > enemy.x) {
+			const dx = state.x - enemy.x;
+			const deadZone = 10;
+			const previousX = enemy.x;
+
+			if (dx > deadZone) {
 				enemy.x += enemy.speed * dt;
 				enemy.visual.setFlipX(false);
-			} else {
+			} else if (dx < -deadZone) {
 				enemy.x -= enemy.speed * dt;
 				enemy.visual.setFlipX(true);
+			}
+
+			for (const solid of scene.solids) {
+				if (solid.width >= levelWorldWidth) continue;
+
+				const solidBounds = getRectBounds(solid);
+				const enemyBounds = getRectBounds(enemy);
+
+				if (!intersects(enemyBounds, solidBounds)) continue;
+
+				if (enemy.x > previousX) {
+					enemy.x = solidBounds.left - enemy.width / 2;
+				} else if (enemy.x < previousX) {
+					enemy.x = solidBounds.right + enemy.width / 2;
+				}
+			}
+
+			enemy.x = Math.max(enemy.width / 2, Math.min(levelWorldWidth - enemy.width / 2, enemy.x));
+
+			enemy.walkTimer += dt * 1000;
+
+			if (enemy.walkTimer >= 150) {
+				enemy.walkTimer = 0;
+				enemy.walkFrame = (enemy.walkFrame + 1) % enemyWalkFrames.length;
+				enemy.visual.setTexture(enemyWalkFrames[enemy.walkFrame]);
 			}
 
 			enemy.visual.setPosition(enemy.x, enemy.y);
