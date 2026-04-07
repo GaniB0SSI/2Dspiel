@@ -2,7 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { levelConfigs } from '$lib/game/levels';
 
-	export let level = 1;
+	let { level = 1 } = $props();
 
 	let PhaserLib;
 	let game;
