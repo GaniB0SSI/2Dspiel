@@ -3,6 +3,8 @@
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 
+	let level1Done = false;
+
 	function playClick() {
 		const audio = new Audio('/sounds/click.mp3');
 		audio.volume = 0.6;
@@ -14,6 +16,11 @@
 		if (sessionStorage.getItem('introSeen')) return;
 
 		goto('/intro');
+	});
+
+	onMount(() => {
+		if (!browser) return;
+		level1Done = localStorage.getItem('level-1-complete') === 'true';
 	});
 </script>
 
@@ -35,7 +42,9 @@
 		<p class="description">Select a level to open the loading screen, then press Play to start.</p>
 
 		<div class="actions">
-			<a class="button primary" href="/loading?level=1" onclick={playClick}>Level 1</a>
+			<a class="button primary {level1Done ? 'completed' : ''}" href="/loading?level=1" onclick={playClick}>
+				Level 1
+			</a>
 			<a class="button secondary" href="/loading?level=2" onclick={playClick}>Level 2</a>
 		</div>
 	</div>
@@ -159,6 +168,15 @@
 	.primary {
 		background: #f8d66d;
 		color: #101525;
+	}
+
+	.primary.completed {
+		background: #8b7b4a;
+		color: #1c2236;
+		box-shadow:
+			inset -4px -4px 0 rgba(0, 0, 0, 0.35),
+			inset 4px 4px 0 rgba(255, 255, 255, 0.08),
+			0 6px 0 rgba(0, 0, 0, 0.35);
 	}
 
 	.secondary {

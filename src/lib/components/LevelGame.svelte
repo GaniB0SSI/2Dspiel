@@ -1,5 +1,6 @@
 <script>
 	import { onDestroy, onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { levelConfigs } from '$lib/game/levels';
 
 	let { level = 1 } = $props();
@@ -19,7 +20,8 @@
 
 	let PhaserLib;
 	let game;
-	let levelComplete = false;
+	let activeScene = null;
+	let levelComplete = $state(false);
 	let gameOver = false;
 	let gameOverResetTimeout = null;
 	let walkFrame = 0;
@@ -33,7 +35,7 @@
 	let collectedItems = $state([]);
 	const walkFrames = ['walking_pose1', 'standing_pose1', 'walking_pose2', 'standing_pose1'];
 	const levelGuides = {
-		1: `Professor Leka: Welcome to Level 1. Start by learning the ground movement, avoid the enemies, and collect every weapon you see. Reach the checkpoint before you push to the far right, then make your way safely to the exit.`,
+		1: `Professor Leka: Welcome to Level 1. Move carefully, avoid the enemies, and collect every weapon you see. To finish, crouch and slip into the window above the car.`,
 		2: `Professor Leka: Level 2 is more vertical. Time your jumps carefully, stay away from the hazards, and use the platforms to climb. If you lose all three lives, the level will restart from the beginning.`
 	};
 
@@ -41,6 +43,8 @@
 	let guideVisible = $state(true);
 	let guideCanDismiss = $state(false);
 	let guideTypingTimeouts = [];
+	const debugMode = true;
+	let gameContainer;
 
 	onMount(async () => {
 		startGuide();
@@ -59,6 +63,9 @@
 		shootAudio = new Audio('/sounds/click.mp3');
 		shootAudio.volume = 0.6;
 		createGame();
+		requestAnimationFrame(() => {
+			if (gameContainer) gameContainer.focus();
+		});
 	});
 
 	onDestroy(() => {
@@ -139,6 +146,24 @@
 		guideVisible = false;
 	}
 
+	function focusGame() {
+		if (gameContainer) gameContainer.focus();
+	}
+
+	function handleRetry() {
+		if (!activeScene) return;
+		resetLevel(activeScene);
+	}
+
+	function handleMenu() {
+		goto('/');
+	}
+
+	function handleNextLevel() {
+		const target = level === 1 ? '/loading?level=2' : '/';
+		goto(target);
+	}
+
 	function stopRunningSound() {
 		if (!runningSoundAudio) return;
 		runningSoundAudio.pause();
@@ -200,8 +225,86 @@
 		};
 	}
 
+	function createCollectable(scene, collectableData) {
+		const { x, y, width, height, type, color } = collectableData;
+		let visual;
+		let glow = null;
+		let outline = null;
+		let prompt = null;
+		let floatTween = null;
+		const baseY = y;
+
+		if (type === 'gun') {
+			glow = scene.add.circle(x, y, Math.max(width, height) * 0.75, 0xffcc66, 0.18);
+			outline = scene.add.image(x, y, 'gun_item');
+			outline.setDisplaySize(width * 1.1, height * 1.1);
+			outline.setTint(0x0b1021);
+			outline.setAlpha(0.7);
+
+			visual = scene.add.image(x, y, 'gun_item');
+			visual.setDisplaySize(width * 1.8, height * 1.8);
+
+			prompt = scene.add
+				.text(x, y - height * 2.0, 'Press E to pick up', {
+					fontSize: '12px',
+					color: '#f8d66d',
+					fontFamily: 'Press Start 2P',
+					backgroundColor: 'rgba(10, 12, 18, 0.75)',
+					padding: { x: 6, y: 4 }
+				})
+				.setOrigin(0.5)
+				.setAlpha(0);
+
+			floatTween = scene.tweens.add({
+				targets: [visual, outline, glow],
+				y: baseY - 10,
+				duration: 1400,
+				yoyo: true,
+				repeat: -1,
+				ease: 'Sine.inOut'
+			});
+		} else {
+			visual = scene.add.rectangle(x, y, width, height, color);
+		}
+
+		return {
+			x,
+			y,
+			baseY,
+			width,
+			height,
+			type,
+			visual,
+			glow,
+			outline,
+			prompt,
+			floatTween,
+			collected: false
+		};
+	}
+
 	function intersects(a, b) {
 		return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+	}
+
+	function updateCollectablePrompts(scene) {
+		if (!scene.collectables || !scene.playerState) return;
+
+		const state = scene.playerState;
+		for (const collectable of scene.collectables) {
+			if (!collectable.prompt || collectable.collected) continue;
+
+			const dx = state.x - collectable.x;
+			const dy = state.y - collectable.y;
+			const distance = Math.hypot(dx, dy);
+			const shouldShow = distance < 140;
+
+			if (collectable.prompt.visible !== shouldShow) {
+				collectable.prompt.setAlpha(shouldShow ? 1 : 0);
+			}
+
+			collectable.prompt.setPosition(collectable.visual.x, collectable.visual.y - collectable.height * 2.0);
+		}
 	}
 
 	function createGame() {
@@ -222,6 +325,7 @@
 					if (level === 1) {
 						this.load.image('long_background', '/long_background.png');
 					}
+					this.load.image('gun_item', '/guns/gun.png');
 					this.load.image('enemy_standing', '/charachters/enemy/pjeter/enemy_standing.png');
 					this.load.image('enemy_moving', '/charachters/enemy/pjeter/enemy_moving.png');
 					this.load.image('enemy_moving1', '/charachters/enemy/pjeter/enemy_moving1.png');
@@ -234,6 +338,7 @@
 				create() {
 					levelComplete = false;
 					gameOver = false;
+					activeScene = this;
 					lives = 3;
 					collectedItems = [];
 					this.levelWorldWidth = LEVEL_WORLD_WIDTH;
@@ -343,39 +448,27 @@
 					this.collectables = [];
 
 					(levelData.collectables || []).forEach((collectableData) => {
-						const collectable = this.add.rectangle(
-							collectableData.x,
-							collectableData.y,
-							collectableData.width,
-							collectableData.height,
-							collectableData.color
-						);
-
-						this.collectables.push({
-							x: collectableData.x,
-							y: collectableData.y,
-							width: collectableData.width,
-							height: collectableData.height,
-							type: collectableData.type,
-							visual: collectable,
-							collected: false
-						});
+						this.collectables.push(createCollectable(this, collectableData));
 					});
 
 					const checkpointData = levelData.checkpoint;
-					this.checkpoint = {
-						x: checkpointData.x,
-						y: checkpointData.y,
-						width: checkpointData.width,
-						height: checkpointData.height,
-						visual: this.add.rectangle(
-							checkpointData.x,
-							checkpointData.y,
-							checkpointData.width,
-							checkpointData.height,
-							0xffff00
-						)
-					};
+					if (checkpointData) {
+						this.checkpoint = {
+							x: checkpointData.x,
+							y: checkpointData.y,
+							width: checkpointData.width,
+							height: checkpointData.height,
+							visual: this.add.rectangle(
+								checkpointData.x,
+								checkpointData.y,
+								checkpointData.width,
+								checkpointData.height,
+								0xffff00
+							)
+						};
+					} else {
+						this.checkpoint = null;
+					}
 
 					const finishData = levelData.finish;
 					this.finish = {
@@ -391,6 +484,9 @@
 							0x2a9d8f
 						)
 					};
+					if (finishData.invisible) {
+						this.finish.visual.setAlpha(0);
+					}
 
 					this.respawnX = levelData.respawn.x;
 					this.respawnY = levelData.respawn.y;
@@ -421,9 +517,26 @@
 						up: Phaser.Input.Keyboard.KeyCodes.W,
 						down: Phaser.Input.Keyboard.KeyCodes.S,
 						left: Phaser.Input.Keyboard.KeyCodes.A,
-					right: Phaser.Input.Keyboard.KeyCodes.D,
-					space: Phaser.Input.Keyboard.KeyCodes.SPACE
+						right: Phaser.Input.Keyboard.KeyCodes.D,
+						space: Phaser.Input.Keyboard.KeyCodes.SPACE
 					});
+					this.input.keyboard.addCapture(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+					if (debugMode) {
+						this.debugText = this.add
+							.text(16, 44, '', {
+								fontSize: '14px',
+								color: '#ffffff',
+								fontFamily: 'Press Start 2P',
+								backgroundColor: 'rgba(0,0,0,0.6)',
+								padding: { x: 6, y: 4 }
+							})
+							.setScrollFactor(0)
+							.setDepth(10);
+						this.debugGuide = this.add
+							.rectangle(0, 0, 120, 20, 0x00ff88, 0.35)
+							.setStrokeStyle(2, 0x00ff88, 0.9);
+					}
 
 					const onMoveKeyDown = () => {
 						if (this.playerState.isCrouching || !this.playerState.onGround) return;
@@ -439,8 +552,7 @@
 					this.wasd.right.on('down', onMoveKeyDown);
 				},
 				update(_, deltaMs) {
-					if (!this.player || !this.cursors || !this.wasd || levelComplete || gameOver || guideVisible)
-						return;
+					if (!this.player || !this.cursors || !this.wasd || levelComplete || gameOver) return;
 
 					const dt = Math.min(deltaMs / 1000, 1 / 30);
 					const state = this.playerState;
@@ -479,9 +591,19 @@
 					resolveVerticalMovement(this, dt, previousOnGround);
 					handleWorldBounds(this);
 					handleTriggers(this);				handleShooting(this, dt);
-				updateBullets(this, dt);					updateEnemies(this, dt);
+					updateBullets(this, dt);					updateEnemies(this, dt);
 					syncPlayerSprite(this);
 					updatePlayerTexture(this, (moveLeft || moveRight) && !state.isCrouching);
+					updateCollectablePrompts(this);
+
+					if (debugMode && this.input?.activePointer && this.debugText && this.debugGuide) {
+						const pointer = this.input.activePointer;
+						const worldPoint = pointer.positionToCamera(this.cameras.main);
+						const roundedX = Math.round(worldPoint.x);
+						const roundedY = Math.round(worldPoint.y);
+						this.debugText.setText(`X:${roundedX} Y:${roundedY}`);
+						this.debugGuide.setPosition(roundedX, roundedY);
+					}
 				}
 			}
 		};
@@ -584,6 +706,10 @@
 		for (const collectable of scene.collectables) {
 			if (!collectable.collected && intersects(playerBounds, getRectBounds(collectable))) {
 				collectable.collected = true;
+				if (collectable.floatTween) collectable.floatTween.stop();
+				if (collectable.glow) collectable.glow.destroy();
+				if (collectable.outline) collectable.outline.destroy();
+				if (collectable.prompt) collectable.prompt.destroy();
 				collectable.visual.destroy();
 				collectedItems.push(collectable.type);
 			}
@@ -595,14 +721,13 @@
 			scene.checkpointReached = true;
 		}
 
-		if (scene.finish && intersects(playerBounds, getRectBounds(scene.finish))) {
+		if (scene.finish && intersects(playerBounds, getRectBounds(scene.finish)) && scene.playerState.isCrouching) {
 			levelComplete = true;
 			scene.playerState.vx = 0;
 			scene.playerState.vy = 0;
-			scene.add.text(265, 60, `${levelConfigs[level].label} Complete!`, {
-				fontSize: '32px',
-				color: '#1b4332'
-			});
+			if (typeof window !== 'undefined') {
+				window.localStorage.setItem(`level-${level}-complete`, 'true');
+			}
 		}
 	}
 
@@ -644,6 +769,21 @@
 		scene.respawnY = levelData.respawn.y;
 		scene.checkpointReached = false;
 		scene.lastShotTime = 0;
+
+		if (scene.collectables) {
+			for (const collectable of scene.collectables) {
+				if (collectable?.floatTween) collectable.floatTween.stop();
+				if (collectable?.glow) collectable.glow.destroy();
+				if (collectable?.outline) collectable.outline.destroy();
+				if (collectable?.prompt) collectable.prompt.destroy();
+				if (collectable?.visual) collectable.visual.destroy();
+			}
+		}
+
+		scene.collectables = [];
+		(levelData.collectables || []).forEach((collectableData) => {
+			scene.collectables.push(createCollectable(scene, collectableData));
+		});
 
 		respawnPlayer(scene);
 	}
@@ -894,23 +1034,7 @@
 			}
 
 			if (!scene.collectables[i] && collectableData) {
-				const collectable = scene.add.rectangle(
-					collectableData.x,
-					collectableData.y,
-					collectableData.width,
-					collectableData.height,
-					collectableData.color
-				);
-
-				scene.collectables[i] = {
-					x: collectableData.x,
-					y: collectableData.y,
-					width: collectableData.width,
-					height: collectableData.height,
-					type: collectableData.type,
-					visual: collectable,
-					collected: false
-				};
+				scene.collectables[i] = createCollectable(scene, collectableData);
 			}
 		});
 	}
@@ -945,8 +1069,28 @@
 	}
 </script>
 
-<div class="game-shell">
-	<div id={"game-container-" + level} class="game-container"></div>
+<div class="game-shell" onclick={focusGame}>
+	<div id={"game-container-" + level} class="game-container" bind:this={gameContainer} tabindex="0"></div>
+	<div class:level-complete-visible={levelComplete} class="level-complete-overlay">
+		<div class="level-complete-card">
+			<p class="level-complete-eyebrow">Level Complete</p>
+			<h2>{levelConfigs[level]?.label ?? `Level ${level}`}</h2>
+			<p class="level-complete-copy">Great work. Choose what you want to do next.</p>
+			<div class="level-complete-actions">
+				{#if level === 1}
+					<button class="level-button primary" type="button" onclick={handleNextLevel}>
+						Next Level
+					</button>
+				{/if}
+				<button class="level-button secondary" type="button" onclick={handleRetry}>
+					Play Again
+				</button>
+				<button class="level-button ghost" type="button" onclick={handleMenu}>
+					Menu
+				</button>
+			</div>
+		</div>
+	</div>
 	<div
 		class:guide-hidden={!guideVisible}
 		class="guide-overlay"
@@ -1016,6 +1160,102 @@
 		display: block;
 		width: 100%;
 		height: auto;
+	}
+
+	.level-complete-overlay {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-items: center;
+		background: rgba(3, 6, 12, 0.78);
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.25s ease;
+		z-index: 4;
+	}
+
+	.level-complete-visible {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.level-complete-card {
+		width: min(90%, 520px);
+		padding: 28px 26px;
+		border-radius: 8px;
+		border: 4px solid #f8d66d;
+		background: rgba(8, 12, 22, 0.96);
+		box-shadow:
+			0 0 0 4px rgba(18, 24, 45, 0.95),
+			0 24px 48px rgba(0, 0, 0, 0.45);
+		text-align: center;
+	}
+
+	.level-complete-eyebrow {
+		margin: 0 0 10px;
+		font-size: 0.7rem;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		color: #f8d66d;
+	}
+
+	.level-complete-card h2 {
+		margin: 0;
+		font-size: clamp(1.4rem, 4vw, 2.3rem);
+		color: #f8fafc;
+		text-shadow: 2px 2px 0 #000;
+	}
+
+	.level-complete-copy {
+		margin: 14px 0 0;
+		font-size: 0.72rem;
+		line-height: 1.7;
+		color: #e5e7eb;
+	}
+
+	.level-complete-actions {
+		margin-top: 22px;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+		justify-content: center;
+	}
+
+	.level-button {
+		border: 3px solid #0b1021;
+		border-radius: 6px;
+		padding: 12px 18px;
+		font-family: 'Press Start 2P', monospace;
+		font-size: 0.65rem;
+		text-transform: uppercase;
+		cursor: pointer;
+		box-shadow:
+			inset -3px -3px 0 rgba(0, 0, 0, 0.35),
+			inset 3px 3px 0 rgba(255, 255, 255, 0.12);
+		transition: transform 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.level-button:hover {
+		transform: translateY(-1px);
+		box-shadow:
+			inset -3px -3px 0 rgba(0, 0, 0, 0.25),
+			inset 3px 3px 0 rgba(255, 255, 255, 0.14);
+	}
+
+	.level-button.primary {
+		background: #f8d66d;
+		color: #101525;
+	}
+
+	.level-button.secondary {
+		background: #22304f;
+		color: #f8fafc;
+	}
+
+	.level-button.ghost {
+		background: transparent;
+		color: #f8d66d;
+		border-color: #f8d66d;
 	}
 
 	.guide-overlay {

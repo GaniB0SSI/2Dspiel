@@ -13,12 +13,10 @@ export const levelConfigs = {
 		],
 		hazards: [],
 		collectables: [
-			{ x: 800, y: 440, width: 30, height: 30, type: 'gun', color: 0xff6b00 },
-			{ x: 1100, y: 390, width: 30, height: 30, type: 'gun', color: 0xff6b00 },
-			{ x: 1350, y: 320, width: 30, height: 30, type: 'gun', color: 0xff6b00 }
+			{ x: 800, y: 440, width: 30, height: 30, type: 'gun', color: 0xff6b00 }
 		],
-		checkpoint: { x: 950, y: 250, width: 20, height: 20 },
-		finish: { x: 1850, y: 152, width: 30, height: 50 }
+		checkpoint: null,
+		finish: { x: 1800, y: 446, width: 70, height: 50, invisible: true }
 	},
 	2: {
 		worldWidth: 800,
