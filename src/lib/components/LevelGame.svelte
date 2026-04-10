@@ -20,6 +20,8 @@
 	let PhaserLib;
 	let game;
 	let levelComplete = false;
+	let gameOver = false;
+	let gameOverResetTimeout = null;
 	let walkFrame = 0;
 	let walkInterval = null;
 	let backgroundAudio = null;
@@ -30,8 +32,18 @@
 	let lives = $state(3);
 	let collectedItems = $state([]);
 	const walkFrames = ['walking_pose1', 'standing_pose1', 'walking_pose2', 'standing_pose1'];
+	const levelGuides = {
+		1: `Professor Leka: Welcome to Level 1. Start by learning the ground movement, avoid the enemies, and collect every weapon you see. Reach the checkpoint before you push to the far right, then make your way safely to the exit.`,
+		2: `Professor Leka: Level 2 is more vertical. Time your jumps carefully, stay away from the hazards, and use the platforms to climb. If you lose all three lives, the level will restart from the beginning.`
+	};
+
+	let guideText = $state('');
+	let guideVisible = $state(true);
+	let guideCanDismiss = $state(false);
+	let guideTypingTimeouts = [];
 
 	onMount(async () => {
+		startGuide();
 		PhaserLib = await import('phaser');
 		backgroundAudio = new Audio('/sounds/backgroundsound.wav');
 		backgroundAudio.loop = true;
@@ -50,6 +62,13 @@
 	});
 
 	onDestroy(() => {
+		clearGuideTyping();
+
+		if (gameOverResetTimeout) {
+			clearTimeout(gameOverResetTimeout);
+			gameOverResetTimeout = null;
+		}
+
 		if (backgroundAudio) {
 			backgroundAudio.pause();
 			backgroundAudio.currentTime = 0;
@@ -82,6 +101,42 @@
 	function startRunningSound() {
 		if (!runningSoundAudio || !runningSoundAudio.paused) return;
 		runningSoundAudio.play();
+	}
+
+	function clearGuideTyping() {
+		for (const timeoutId of guideTypingTimeouts) {
+			clearTimeout(timeoutId);
+		}
+
+		guideTypingTimeouts = [];
+	}
+
+	function startGuide() {
+		const message = levelGuides[level];
+
+		clearGuideTyping();
+		guideText = '';
+		guideVisible = Boolean(message);
+		guideCanDismiss = false;
+
+		if (!message) return;
+
+		Array.from(message).forEach((character, index, characters) => {
+			const timeoutId = setTimeout(() => {
+				guideText += character;
+
+				if (index === characters.length - 1) {
+					guideCanDismiss = true;
+				}
+			}, index * 18);
+
+			guideTypingTimeouts = [...guideTypingTimeouts, timeoutId];
+		});
+	}
+
+	function dismissGuide() {
+		if (!guideCanDismiss) return;
+		guideVisible = false;
 	}
 
 	function stopRunningSound() {
@@ -178,6 +233,7 @@
 				},
 				create() {
 					levelComplete = false;
+					gameOver = false;
 					lives = 3;
 					collectedItems = [];
 					this.levelWorldWidth = LEVEL_WORLD_WIDTH;
@@ -194,6 +250,7 @@
 					this.solids = [];
 					this.hazards = [];
 					this.checkpointReached = false;
+					this.gameOverText = null;
 
 					const floorY = level === 1 ? 600 : 560;
 					const floor = this.add.rectangle(
@@ -382,7 +439,8 @@
 					this.wasd.right.on('down', onMoveKeyDown);
 				},
 				update(_, deltaMs) {
-					if (!this.player || !this.cursors || !this.wasd || levelComplete) return;
+					if (!this.player || !this.cursors || !this.wasd || levelComplete || gameOver || guideVisible)
+						return;
 
 					const dt = Math.min(deltaMs / 1000, 1 / 30);
 					const state = this.playerState;
@@ -548,6 +606,48 @@
 		}
 	}
 
+	function showGameOver(scene) {
+		if (scene.gameOverText) {
+			scene.gameOverText.destroy();
+		}
+
+		scene.gameOverText = scene.add
+			.text(VIEWPORT_WIDTH / 2, 140, 'GAME OVER', {
+				fontSize: '36px',
+				color: '#ef4444',
+				fontFamily: 'Press Start 2P',
+				stroke: '#000000',
+				strokeThickness: 6
+			})
+			.setOrigin(0.5)
+			.setScrollFactor(0);
+	}
+
+	function resetLevel(scene) {
+		const levelData = levelConfigs[level];
+
+		gameOver = false;
+		levelComplete = false;
+		lives = 3;
+		collectedItems = [];
+
+		if (scene.livesText) {
+			scene.livesText.setText('â¤ï¸ â¤ï¸ â¤ï¸');
+		}
+
+		if (scene.gameOverText) {
+			scene.gameOverText.destroy();
+			scene.gameOverText = null;
+		}
+
+		scene.respawnX = levelData.respawn.x;
+		scene.respawnY = levelData.respawn.y;
+		scene.checkpointReached = false;
+		scene.lastShotTime = 0;
+
+		respawnPlayer(scene);
+	}
+
 	function updateEnemies(scene, dt) {
 		if (!scene.enemies) return;
 
@@ -621,7 +721,7 @@
 
 			if (enemy.hitCooldown > 0) {
 				enemy.hitCooldown -= dt;
-				return;
+				continue;
 			}
 
 			const enemyBounds = getRectBounds(enemy);
@@ -637,6 +737,24 @@
 				}
 
 				if (lives <= 0) {
+					gameOver = true;
+					stopRunningSound();
+					stopWalkAnimation(scene);
+					scene.playerState.vx = 0;
+					scene.playerState.vy = 0;
+					showGameOver(scene);
+
+					if (gameOverResetTimeout) {
+						clearTimeout(gameOverResetTimeout);
+					}
+
+					gameOverResetTimeout = setTimeout(() => {
+						gameOverResetTimeout = null;
+						if (!scene.player) return;
+						resetLevel(scene);
+					}, 1800);
+
+					return;
 					lives = 3;
 					if (scene.livesText) scene.livesText.setText('❤️ ❤️ ❤️');
 					respawnPlayer(scene);
@@ -829,6 +947,32 @@
 
 <div class="game-shell">
 	<div id={"game-container-" + level} class="game-container"></div>
+	<div
+		class:guide-hidden={!guideVisible}
+		class="guide-overlay"
+		role="button"
+		tabindex={guideCanDismiss ? 0 : -1}
+		aria-label="Dismiss professor guide"
+		aria-disabled={!guideCanDismiss}
+		onclick={dismissGuide}
+		onkeydown={(event) => {
+			if ((event.key === 'Enter' || event.key === ' ') && guideCanDismiss) {
+				event.preventDefault();
+				dismissGuide();
+			}
+		}}
+	>
+		<div class="guide-portrait">
+			<span>Prof</span>
+		</div>
+		<div class="guide-box">
+			<p class="guide-name">Professor Leka</p>
+			<p class="guide-copy">{guideText}</p>
+			{#if guideCanDismiss}
+				<p class="guide-prompt">Click to continue</p>
+			{/if}
+		</div>
+	</div>
 	<div class="collectables-display">
 		<div class="display-row">
 			<div>
@@ -853,6 +997,7 @@
 
 <style>
 	.game-shell {
+		position: relative;
 		width: 100%;
 		display: flex;
 		flex-direction: column;
@@ -871,6 +1016,90 @@
 		display: block;
 		width: 100%;
 		height: auto;
+	}
+
+	.guide-overlay {
+		position: absolute;
+		left: 0;
+		bottom: 84px;
+		z-index: 3;
+		display: flex;
+		align-items: flex-end;
+		gap: 12px;
+		width: min(100%, 520px);
+		padding-right: 16px;
+		opacity: 1;
+		transform: translateX(0);
+		transition:
+			transform 0.28s ease,
+			opacity 0.28s ease;
+	}
+
+	.guide-hidden {
+		opacity: 0;
+		transform: translateX(-115%);
+		pointer-events: none;
+	}
+
+	.guide-portrait {
+		flex: 0 0 88px;
+		width: 88px;
+		height: 88px;
+		border: 4px solid #f8d66d;
+		border-radius: 10px;
+		display: grid;
+		place-items: center;
+		background:
+			radial-gradient(circle at 35% 30%, #fef3c7 0, #fef3c7 22%, #6b4f2d 23%, #2c1c10 100%);
+		box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+	}
+
+	.guide-portrait span {
+		padding-top: 48px;
+		font-size: 0.68rem;
+		color: #f8fafc;
+		text-shadow: 2px 2px 0 #000;
+	}
+
+	.guide-box {
+		flex: 1;
+		min-height: 110px;
+		padding: 16px 18px;
+		border: 4px solid #f8d66d;
+		border-radius: 6px;
+		background: rgba(8, 12, 22, 0.94);
+		box-shadow:
+			0 0 0 4px rgba(18, 24, 45, 0.95),
+			0 20px 36px rgba(0, 0, 0, 0.35);
+	}
+
+	.guide-name,
+	.guide-copy,
+	.guide-prompt {
+		margin: 0;
+	}
+
+	.guide-name {
+		margin-bottom: 10px;
+		font-size: 0.72rem;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: #f8d66d;
+	}
+
+	.guide-copy {
+		font-size: 0.68rem;
+		line-height: 1.75;
+		color: #f8fafc;
+		min-height: 4.8em;
+	}
+
+	.guide-prompt {
+		margin-top: 10px;
+		font-size: 0.62rem;
+		color: #ff9f1c;
+		text-transform: uppercase;
+		animation: pulse 1.5s infinite;
 	}
 
 	.collectables-display {
@@ -938,6 +1167,24 @@
 	}
 
 	@media (max-width: 720px) {
+		.guide-overlay {
+			left: 8px;
+			right: 8px;
+			bottom: 112px;
+			width: auto;
+			padding-right: 0;
+		}
+
+		.guide-portrait {
+			flex-basis: 72px;
+			width: 72px;
+			height: 72px;
+		}
+
+		.guide-box {
+			min-height: 124px;
+		}
+
 		.game-container {
 			min-height: auto;
 		}
