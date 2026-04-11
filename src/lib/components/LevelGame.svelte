@@ -17,6 +17,7 @@
 	const PLAYER_HITBOX_WIDTH = 38;
 	const PLAYER_HITBOX_HEIGHT = 90;
 	const BULLET_SPEED = 600;
+	const SHOOT_COOLDOWN = 0.4;
 
 	let PhaserLib;
 	let game;
@@ -32,18 +33,29 @@
 	let runningSoundAudio = null;
 	let shootAudio = null;
 	let lives = $state(3);
-	let collectedItems = $state([]);
+	let ammo = $state(0);
+	let isShooting = false;
+	let shootingTimeout = null;
 	const walkFrames = ['walking_pose1', 'standing_pose1', 'walking_pose2', 'standing_pose1'];
 	const levelGuides = {
-		1: `Professor Leka: Welcome to Level 1. Move carefully, avoid the enemies, and collect every weapon you see. To finish, crouch and slip into the window above the car.`,
-		2: `Professor Leka: Level 2 is more vertical. Time your jumps carefully, stay away from the hazards, and use the platforms to climb. If you lose all three lives, the level will restart from the beginning.`
+		1: [
+			`Professor Leka: Welcome to Level 1. Watch your step - the ground is not always what it seems.`,
+			`Professor Leka: Avoid the zombies patrolling the street. Collect the weapons you find along the way.`,
+			`Professor Leka: Reach the end of the street to escape. Good luck - you will need it.`
+		],
+		2: [
+			`Professor Leka: Level 2 is more vertical. Time your jumps carefully.`,
+			`Professor Leka: Stay away from the hazards and use the platforms to climb higher.`,
+			`Professor Leka: If you lose all three lives the level restarts. Reach the top to escape.`
+		]
 	};
 
 	let guideText = $state('');
+	let guideMessageIndex = $state(0);
+	let guidePortraitSrc = $state('/charachters/explainer/explainer_pose1.png');
 	let guideVisible = $state(true);
 	let guideCanDismiss = $state(false);
 	let guideTypingTimeouts = [];
-	const debugMode = true;
 	let gameContainer;
 
 	onMount(async () => {
@@ -70,6 +82,10 @@
 
 	onDestroy(() => {
 		clearGuideTyping();
+		if (shootingTimeout) {
+			clearTimeout(shootingTimeout);
+			shootingTimeout = null;
+		}
 
 		if (gameOverResetTimeout) {
 			clearTimeout(gameOverResetTimeout);
@@ -119,19 +135,27 @@
 	}
 
 	function startGuide() {
-		const message = levelGuides[level];
+		const messages = levelGuides[level];
+		if (!messages || messages.length === 0) {
+			guideVisible = false;
+			return;
+		}
 
+		guideMessageIndex = 0;
+		guidePortraitSrc = `/charachters/explainer/explainer_pose${1}.png`;
+		guideVisible = true;
+		guideCanDismiss = false;
+		typeMessage(messages[0]);
+	}
+
+	function typeMessage(message) {
 		clearGuideTyping();
 		guideText = '';
-		guideVisible = Boolean(message);
 		guideCanDismiss = false;
-
-		if (!message) return;
 
 		Array.from(message).forEach((character, index, characters) => {
 			const timeoutId = setTimeout(() => {
 				guideText += character;
-
 				if (index === characters.length - 1) {
 					guideCanDismiss = true;
 				}
@@ -143,7 +167,17 @@
 
 	function dismissGuide() {
 		if (!guideCanDismiss) return;
-		guideVisible = false;
+
+		const messages = levelGuides[level];
+		const nextIndex = guideMessageIndex + 1;
+
+		if (nextIndex < messages.length) {
+			guideMessageIndex = nextIndex;
+			guidePortraitSrc = `/charachters/explainer/explainer_pose${nextIndex + 1}.png`;
+			typeMessage(messages[nextIndex]);
+		} else {
+			guideVisible = false;
+		}
 	}
 
 	function focusGame() {
@@ -334,17 +368,17 @@
 					this.load.image('walking_pose2', '/charachters/eni/walking_pose2.png');
 					this.load.image('jumping_pose1', '/charachters/eni/jumping_pose1.png');
 					this.load.image('crouching_pose1', '/charachters/eni/crouching_pose1.png');
+					this.load.image('shooting_pose', '/charachters/eni/shooting_pose.png');
 				},
 				create() {
 					levelComplete = false;
 					gameOver = false;
 					activeScene = this;
 					lives = 3;
-					collectedItems = [];
+					ammo = 0;
 					this.levelWorldWidth = LEVEL_WORLD_WIDTH;
 					this.bullets = [];
 					this.lastShotTime = 0;
-					this.shootCooldown = 0.1;
 
 					if (level === 1) {
 						this.add.image(LEVEL_WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 'long_background');
@@ -426,6 +460,13 @@
 							fontFamily: 'Press Start 2P'
 						})
 						.setScrollFactor(0);
+					this.ammoText = this.add
+						.text(16, 48, '🔫 Ammo: 0', {
+							fontSize: '14px',
+							color: '#ffff00',
+							fontFamily: 'Press Start 2P'
+						})
+						.setScrollFactor(0);
 
 					levelData.hazards.forEach((hazardData) => {
 						const hazard = this.add.rectangle(
@@ -482,11 +523,8 @@
 							finishData.width,
 							finishData.height,
 							0x2a9d8f
-						)
+						).setAlpha(0)
 					};
-					if (finishData.invisible) {
-						this.finish.visual.setAlpha(0);
-					}
 
 					this.respawnX = levelData.respawn.x;
 					this.respawnY = levelData.respawn.y;
@@ -521,22 +559,6 @@
 						space: Phaser.Input.Keyboard.KeyCodes.SPACE
 					});
 					this.input.keyboard.addCapture(Phaser.Input.Keyboard.KeyCodes.SPACE);
-
-					if (debugMode) {
-						this.debugText = this.add
-							.text(16, 44, '', {
-								fontSize: '14px',
-								color: '#ffffff',
-								fontFamily: 'Press Start 2P',
-								backgroundColor: 'rgba(0,0,0,0.6)',
-								padding: { x: 6, y: 4 }
-							})
-							.setScrollFactor(0)
-							.setDepth(10);
-						this.debugGuide = this.add
-							.rectangle(0, 0, 120, 20, 0x00ff88, 0.35)
-							.setStrokeStyle(2, 0x00ff88, 0.9);
-					}
 
 					const onMoveKeyDown = () => {
 						if (this.playerState.isCrouching || !this.playerState.onGround) return;
@@ -595,15 +617,6 @@
 					syncPlayerSprite(this);
 					updatePlayerTexture(this, (moveLeft || moveRight) && !state.isCrouching);
 					updateCollectablePrompts(this);
-
-					if (debugMode && this.input?.activePointer && this.debugText && this.debugGuide) {
-						const pointer = this.input.activePointer;
-						const worldPoint = pointer.positionToCamera(this.cameras.main);
-						const roundedX = Math.round(worldPoint.x);
-						const roundedY = Math.round(worldPoint.y);
-						this.debugText.setText(`X:${roundedX} Y:${roundedY}`);
-						this.debugGuide.setPosition(roundedX, roundedY);
-					}
 				}
 			}
 		};
@@ -711,7 +724,10 @@
 				if (collectable.outline) collectable.outline.destroy();
 				if (collectable.prompt) collectable.prompt.destroy();
 				collectable.visual.destroy();
-				collectedItems.push(collectable.type);
+				ammo += 5;
+				if (scene.ammoText) {
+					scene.ammoText.setText(`🔫 Ammo: ${ammo}`);
+				}
 			}
 		}
 
@@ -754,7 +770,10 @@
 		gameOver = false;
 		levelComplete = false;
 		lives = 3;
-		collectedItems = [];
+		ammo = 0;
+		if (scene.ammoText) {
+			scene.ammoText.setText('🔫 Ammo: 0');
+		}
 
 		if (scene.livesText) {
 			scene.livesText.setText('â¤ï¸ â¤ï¸ â¤ï¸');
@@ -908,11 +927,11 @@
 	}
 
 	function handleShooting(scene, dt) {
-		if (!scene.wasd || collectedItems.length === 0) return;
+		if (!scene.wasd) return;
 
 		scene.lastShotTime += dt;
 
-		if (scene.wasd.space.isDown && scene.lastShotTime >= scene.shootCooldown) {
+		if (scene.wasd.space.isDown && scene.lastShotTime >= SHOOT_COOLDOWN && ammo > 0) {
 			const state = scene.playerState;
 			const bulletX = state.x + (state.facingLeft ? -20 : 20);
 			const bulletVx = state.facingLeft ? -BULLET_SPEED : BULLET_SPEED;
@@ -926,6 +945,16 @@
 				visual: scene.add.rectangle(bulletX, state.y - 10, 12, 6, 0xffff00)
 			});
 
+			ammo -= 1;
+			if (scene.ammoText) {
+				scene.ammoText.setText(`🔫 Ammo: ${ammo}`);
+			}
+			isShooting = true;
+			if (shootingTimeout) clearTimeout(shootingTimeout);
+			shootingTimeout = setTimeout(() => {
+				isShooting = false;
+				shootingTimeout = null;
+			}, 300);
 			scene.lastShotTime = 0;
 
 			if (shootAudio) {
@@ -1047,6 +1076,13 @@
 	function updatePlayerTexture(scene, isMoving) {
 		const state = scene.playerState;
 
+		if (isShooting && state.onGround && !state.isCrouching) {
+			stopRunningSound();
+			stopWalkAnimation(scene, false);
+			scene.player.setTexture('shooting_pose');
+			return;
+		}
+
 		if (!state.onGround) {
 			if (state.isCrouching) {
 				setCrouchState(scene, false);
@@ -1070,7 +1106,33 @@
 </script>
 
 <div class="game-shell" onclick={focusGame}>
-	<div id={"game-container-" + level} class="game-container" bind:this={gameContainer} tabindex="0"></div>
+	<div class="canvas-wrapper">
+		<div id={"game-container-" + level} class="game-container" bind:this={gameContainer} tabindex="0"></div>
+		<div
+			class:guide-hidden={!guideVisible}
+			class="guide-overlay"
+			role="button"
+			tabindex={guideCanDismiss ? 0 : -1}
+			aria-label="Dismiss professor guide"
+			aria-disabled={!guideCanDismiss}
+			onclick={dismissGuide}
+			onkeydown={(event) => {
+				if ((event.key === 'Enter' || event.key === ' ') && guideCanDismiss) {
+					event.preventDefault();
+					dismissGuide();
+				}
+			}}
+		>
+			<img src={guidePortraitSrc} alt="Professor Leka" class="portrait-img" />
+			<div class="guide-box">
+				<p class="guide-name">Professor Leka</p>
+				<p class="guide-copy">{guideText}</p>
+				{#if guideCanDismiss}
+					<p class="guide-prompt">Click to continue</p>
+				{/if}
+			</div>
+		</div>
+	</div>
 	<div class:level-complete-visible={levelComplete} class="level-complete-overlay">
 		<div class="level-complete-card">
 			<p class="level-complete-eyebrow">Level Complete</p>
@@ -1091,66 +1153,23 @@
 			</div>
 		</div>
 	</div>
-	<div
-		class:guide-hidden={!guideVisible}
-		class="guide-overlay"
-		role="button"
-		tabindex={guideCanDismiss ? 0 : -1}
-		aria-label="Dismiss professor guide"
-		aria-disabled={!guideCanDismiss}
-		onclick={dismissGuide}
-		onkeydown={(event) => {
-			if ((event.key === 'Enter' || event.key === ' ') && guideCanDismiss) {
-				event.preventDefault();
-				dismissGuide();
-			}
-		}}
-	>
-		<div class="guide-portrait">
-			<span>Prof</span>
-		</div>
-		<div class="guide-box">
-			<p class="guide-name">Professor Leka</p>
-			<p class="guide-copy">{guideText}</p>
-			{#if guideCanDismiss}
-				<p class="guide-prompt">Click to continue</p>
-			{/if}
-		</div>
-	</div>
-	<div class="collectables-display">
-		<div class="display-row">
-			<div>
-				<p class="collectables-label">Weapons:</p>
-				<div class="collectables-list">
-					{#each collectedItems as item (item)}
-						<span class="collectable-item gun-item">🔫</span>
-					{/each}
-					{#if collectedItems.length === 0}
-						<span class="collectable-empty">None</span>
-					{/if}
-				</div>
-			</div>
-			{#if collectedItems.length > 0}
-				<div class="shoot-info">
-					<p class="shoot-label">PRESS SPACE TO SHOOT</p>
-				</div>
-			{/if}
-		</div>
-	</div>
 </div>
 
 <style>
 	.game-shell {
-		position: relative;
-		width: 100%;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 16px;
 	}
 
-	.game-container {
+	.canvas-wrapper {
+		position: relative;
 		width: min(100%, 800px);
+	}
+
+	.game-container {
+		width: 100%;
 		min-height: 600px;
 		overflow: hidden;
 		box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
@@ -1260,50 +1279,41 @@
 
 	.guide-overlay {
 		position: absolute;
-		left: 0;
-		bottom: 84px;
+		bottom: 16px;
+		left: 12px;
+		right: 12px;
 		z-index: 3;
 		display: flex;
 		align-items: flex-end;
 		gap: 12px;
-		width: min(100%, 520px);
-		padding-right: 16px;
 		opacity: 1;
-		transform: translateX(0);
 		transition:
-			transform 0.28s ease,
-			opacity 0.28s ease;
+			opacity 0.28s ease,
+			transform 0.28s ease;
 	}
 
 	.guide-hidden {
 		opacity: 0;
-		transform: translateX(-115%);
+		transform: translateY(20px);
 		pointer-events: none;
 	}
 
-	.guide-portrait {
-		flex: 0 0 88px;
-		width: 88px;
-		height: 88px;
-		border: 4px solid #f8d66d;
-		border-radius: 10px;
-		display: grid;
-		place-items: center;
-		background:
-			radial-gradient(circle at 35% 30%, #fef3c7 0, #fef3c7 22%, #6b4f2d 23%, #2c1c10 100%);
-		box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
-	}
-
-	.guide-portrait span {
-		padding-top: 48px;
-		font-size: 0.68rem;
-		color: #f8fafc;
-		text-shadow: 2px 2px 0 #000;
+	.portrait-img {
+		flex: 0 0 auto;
+		width: 120px;
+		height: 160px;
+		object-fit: cover;
+		object-position: top;
+		display: block;
+		background: none;
+		border: none;
+		box-shadow: none;
+		border-radius: 0;
+		align-self: flex-end;
 	}
 
 	.guide-box {
 		flex: 1;
-		min-height: 110px;
 		padding: 16px 18px;
 		border: 4px solid #f8d66d;
 		border-radius: 6px;
@@ -1342,61 +1352,6 @@
 		animation: pulse 1.5s infinite;
 	}
 
-	.collectables-display {
-		width: min(100%, 800px);
-		padding: 12px 16px;
-		background: rgba(0, 0, 0, 0.8);
-		border: 2px solid #fbbf24;
-		border-radius: 4px;
-		font-family: 'Press Start 2P', monospace;
-		font-size: 0.75rem;
-		color: #fbbf24;
-	}
-
-	.display-row {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		gap: 16px;
-	}
-
-	.collectables-label {
-		margin: 0 0 8px 0;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-	}
-
-	.collectables-list {
-		display: flex;
-		gap: 8px;
-		align-items: center;
-		flex-wrap: wrap;
-		min-height: 24px;
-	}
-
-	.collectable-item {
-		font-size: 1.5rem;
-		display: inline-block;
-	}
-
-	.collectable-empty {
-		color: #888;
-		font-size: 0.75rem;
-	}
-
-	.shoot-info {
-		text-align: right;
-	}
-
-	.shoot-label {
-		margin: 0;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		font-size: 0.65rem;
-		color: #ff6b6b;
-		animation: pulse 1.5s infinite;
-	}
-
 	@keyframes pulse {
 		0%, 100% {
 			opacity: 1;
@@ -1408,17 +1363,14 @@
 
 	@media (max-width: 720px) {
 		.guide-overlay {
+			bottom: 12px;
 			left: 8px;
 			right: 8px;
-			bottom: 112px;
-			width: auto;
-			padding-right: 0;
 		}
 
-		.guide-portrait {
-			flex-basis: 72px;
-			width: 72px;
-			height: 72px;
+		.portrait-img {
+			width: 96px;
+			height: 132px;
 		}
 
 		.guide-box {
@@ -1429,8 +1381,7 @@
 			min-height: auto;
 		}
 
-		.collectables-display {
-			width: 100%;
-		}
 	}
 </style>
+
+

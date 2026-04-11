@@ -40,7 +40,7 @@
 	});
 
 	onMount(() => {
-		menuMusic = new Audio('/sounds/intro.mp4');
+		menuMusic = new Audio('/sounds/intro.mp3');
 		menuMusic.loop = true;
 		menuMusic.volume = 0.5;
 

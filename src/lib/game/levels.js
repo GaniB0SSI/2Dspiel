@@ -7,9 +7,9 @@ export const levelConfigs = {
 			{ x: 180, y: 485, width: 140, height: 20, color: 0x9c6644 }
 		],
 		enemies: [
-			{ x: 600, y: 525, width: 50, height: 80, patrolLeft: 450, patrolRight: 750 },
-			{ x: 1200, y: 525, width: 50, height: 80, patrolLeft: 1050, patrolRight: 1350 },
-			{ x: 1500, y: 525, width: 50, height: 80, patrolLeft: 1400, patrolRight: 1650 }
+			{ x: 600, y: 530, width: 50, height: 75, patrolLeft: 450, patrolRight: 750 },
+			{ x: 1200, y: 530, width: 50, height: 75, patrolLeft: 1050, patrolRight: 1350 },
+			{ x: 1500, y: 530, width: 50, height: 75, patrolLeft: 1400, patrolRight: 1650 }
 		],
 		hazards: [],
 		collectables: [
