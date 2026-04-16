@@ -19,27 +19,45 @@ export const levelConfigs = {
 		finish: { x: 1800, y: 446, width: 70, height: 50, invisible: true }
 	},
 	2: {
-		worldWidth: 800,
+		worldWidth: 4403,
 		label: 'Level 2',
 		respawn: { x: 90, y: 420 },
 		platforms: [
-			{ x: 180, y: 485, width: 140, height: 20, color: 0x9c6644 },
-			{ x: 355, y: 430, width: 100, height: 20, color: 0x9c6644 },
-			{ x: 520, y: 360, width: 120, height: 20, color: 0x9c6644 },
-			{ x: 680, y: 290, width: 120, height: 20, color: 0x9c6644 },
-			{ x: 500, y: 205, width: 100, height: 20, color: 0x7f5569 },
-			{ x: 340, y: 145, width: 120, height: 20, color: 0x7f5539 },
-			{ x: 165, y: 140, width: 110, height: 20, color: 0x7f5539 }
+			{	 x: 1170, y: 487, width: 130, height: 24, color: 0x9c6644, },
+			{	 x: 1350, y: 427, width: 130, height: 24, color: 0x9c6644, },
+			{	 x: 1450, y: 400, width: 130, height: 24, color: 0x9c6644, },
+			{	 x: 1650, y: 400, width: 130, height: 24, color: 0x9c6644, },
+			{	 x: 1750, y: 400, width: 130, height: 24, color: 0x9c6644, },
+			{	 x: 1950, y: 400, width: 130, height: 24, color: 0x9c6644, },
+			{	 x: 2250, y: 400, width: 130, height: 24, color: 0x9c6644, },
+			{	 x: 2550, y: 400, width: 130, height: 24, color: 0x9c6644, },
+			{	 x: 2750, y: 400, width: 130, height: 24, color: 0x9c6644, },
+			{	 x: 2950, y: 400, width: 130, height: 24, color: 0x9c6644, }
+		],
+		enemies: [
+			{
+				type: 'boss',
+				name: 'Paulin',
+				x: 3920,
+				y: 470,
+				width: 130,
+				height: 165,
+				health: 10,
+				speed: 170,
+				patrolLeft: 3520,
+				patrolRight: 4220,
+				projectileCooldown: 1.45
+			}
 		],
 		hazards: [
-			{ x: 280, y: 520, width: 60, height: 18 },
-			{ x: 440, y: 430, width: 60, height: 18 }
+			
 		],
 		collectables: [
-			{ x: 520, y: 320, width: 30, height: 30, type: 'gun', color: 0xff6b00 },
-			{ x: 680, y: 250, width: 30, height: 30, type: 'gun', color: 0xff6b00 }
+			{ x: 950, y: 320, width: 30, height: 30, type: 'gun', color: 0xff6b00 },
+			{ x: 2000, y: 370, width: 30, height: 30, type: 'gun', color: 0xff6b00 },
+			{ x: 3400, y: 360, width: 30, height: 30, type: 'gun', color: 0xff6b00 }
 		],
-		checkpoint: { x: 690, y: 262, width: 20, height: 20 },
-		finish: { x: 165, y: 42, width: 30, height: 50 }
+		checkpoint: { x: 2200, y: 250, width: 20, height: 20 },
+		finish: { x: 4300, y: 152, width: 30, height: 50 }
 	}
 };
