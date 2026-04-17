@@ -18,6 +18,7 @@
 	const PLAYER_DISPLAY_HEIGHT = 102;
 	const PLAYER_HITBOX_WIDTH = 38;
 	const PLAYER_HITBOX_HEIGHT = 90;
+	const PLAYER_CROUCH_HITBOX_HEIGHT = 54;
 	const BULLET_SPEED = 600;      // How fast player bullets travel
 	const SHOOT_COOLDOWN = 0.4;    // Seconds between each player shot
 	const BOSS_PROJECTILE_SPEED = 220;    // How fast Paul's blubber travels
@@ -27,6 +28,7 @@
 	let game;
 	let activeScene = null;
 	let levelComplete = $state(false);
+	let bossDefeated = $state(false);
 	let gameOver = false;
 	let gameOverResetTimeout = null;
 	let walkFrame = 0;
@@ -213,6 +215,12 @@
 		goto(target);
 	}
 
+	function handleBossDefeatedContinue() {
+		if (!activeScene) return;
+		bossDefeated = false;
+		completeLevel(activeScene);
+	}
+
 	function stopRunningSound() {
 		if (!runningSoundAudio) return;
 		runningSoundAudio.pause();
@@ -254,15 +262,34 @@
 	// Switches the player between standing and crouching texture/state
 	function setCrouchState(scene, shouldCrouch) {
 		const state = scene.playerState;
-
 		if (shouldCrouch === state.isCrouching) return;
 
-		state.isCrouching = shouldCrouch;
-
 		if (shouldCrouch) {
+			const feetY = state.y + state.height / 2;
+			state.isCrouching = true;
+			state.height = PLAYER_CROUCH_HITBOX_HEIGHT;
+			state.y = feetY - state.height / 2;
 			stopWalkAnimation(scene, false);
 			scene.player.setTexture('crouching_pose1');
 		} else {
+			const feetY = state.y + state.height / 2;
+			const nextHeight = PLAYER_HITBOX_HEIGHT;
+			const nextY = feetY - nextHeight / 2;
+			const nextBounds = {
+				left: state.x - state.width / 2,
+				right: state.x + state.width / 2,
+				top: nextY - nextHeight / 2,
+				bottom: nextY + nextHeight / 2
+			};
+
+			for (const solid of scene.solids ?? []) {
+				if (!intersects(nextBounds, getRectBounds(solid))) continue;
+				return;
+			}
+
+			state.isCrouching = false;
+			state.height = nextHeight;
+			state.y = nextY;
 			scene.player.setTexture('standing_pose1');
 		}
 	}
@@ -453,6 +480,7 @@
 				// Create: builds the level — background, floor, platforms, enemies, player, HUD
 				create() {
 					levelComplete = false;
+					bossDefeated = false;
 					gameOver = false;
 					activeScene = this;
 					lives = 3;
@@ -654,7 +682,7 @@
 				},
 				// Update: runs every frame — handles input, physics, collisions, and rendering
 				update(_, deltaMs) {
-					if (!this.player || !this.cursors || !this.wasd || levelComplete || gameOver) return;
+					if (!this.player || !this.cursors || !this.wasd || levelComplete || bossDefeated || gameOver) return;
 
 					const dt = Math.min(deltaMs / 1000, 1 / 30);
 					const state = this.playerState;
@@ -891,8 +919,7 @@
 
 			gameOverResetTimeout = setTimeout(() => {
 				gameOverResetTimeout = null;
-				if (!scene.player) return;
-				resetLevel(scene);
+				goto('/');
 			}, 1800);
 
 			return;
@@ -908,12 +935,15 @@
 
 		scene.gameOverText = scene.add
 			.text(VIEWPORT_WIDTH / 2, 140, 'GAME OVER', {
-				fontSize: '36px',
-				color: '#ef4444',
-				fontFamily: 'Press Start 2P',
+				fontSize: '48px',
+				color: '#fff8dc',
+				fontFamily: 'Press Start 2P, monospace',
+				fontStyle: 'bold',
 				stroke: '#000000',
-				strokeThickness: 6
+				strokeThickness: 5,
+				padding: { x: 12, y: 10 }
 			})
+			.setShadow(4, 4, '#000000', 0, true, true)
 			.setOrigin(0.5)
 			.setScrollFactor(0);
 	}
@@ -925,6 +955,7 @@
 
 		gameOver = false;
 		levelComplete = false;
+		bossDefeated = false;
 		lives = 3;
 		ammo = 0;
 		if (scene.ammoText) {
@@ -1193,7 +1224,7 @@
 							scene.enemies.splice(j, 1);
 							updateBossHud(scene);
 							if (level === 2) {
-								completeLevel(scene);
+								bossDefeated = true;
 							}
 						}
 					} else {
@@ -1248,6 +1279,7 @@
 		scene.playerState.vy = 0;
 		scene.playerState.onGround = false;
 		scene.playerState.isCrouching = false;
+		scene.playerState.height = PLAYER_HITBOX_HEIGHT;
 		stopWalkAnimation(scene);
 
 		for (const bullet of scene.bullets) {
@@ -1336,6 +1368,15 @@
 	}
 </script>
 
+<svelte:head>
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+	<link
+		href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
+		rel="stylesheet"
+	/>
+</svelte:head>
+
 <div class="game-shell" onclick={focusGame}>
 	<div class="canvas-wrapper">
 		<div id={"game-container-" + level} class="game-container" bind:this={gameContainer} tabindex="0"></div>
@@ -1361,6 +1402,32 @@
 				{#if guideCanDismiss}
 					<p class="guide-prompt">Click to continue</p>
 				{/if}
+			</div>
+		</div>
+		<div
+			class:guide-hidden={!bossDefeated}
+			class="guide-overlay"
+			role="button"
+			tabindex={bossDefeated ? 0 : -1}
+			aria-label="Continue after boss defeat"
+			aria-disabled={!bossDefeated}
+			onclick={() => {
+				bossDefeated = false;
+				if (activeScene) completeLevel(activeScene);
+			}}
+			onkeydown={(event) => {
+				if ((event.key === 'Enter' || event.key === ' ') && bossDefeated) {
+					event.preventDefault();
+					bossDefeated = false;
+					if (activeScene) completeLevel(activeScene);
+				}
+			}}
+		>
+			<img src="/charachters/explainer/enemy_defeated.png" alt="Enemy defeated" class="portrait-img" />
+			<div class="guide-box">
+				<p class="guide-name">Professor Paul</p>
+				<p class="guide-copy">You did it! Thank you for freeing me from this cursed school.</p>
+				<p class="guide-prompt">Click to continue</p>
 			</div>
 		</div>
 	</div>

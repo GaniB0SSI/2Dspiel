@@ -4,7 +4,7 @@ export const levelConfigs = {
 		label: 'Level 1',
 		respawn: { x: 120, y: 420 },
 		platforms: [{ x: 1790, y: 487, width: 130, height: 24, color: 0x9c6644, invisible: true },
-			{ x: 180, y: 485, width: 140, height: 20, color: 0x9c6644 }
+			
 		],
 		enemies: [
 			{ x: 600, y: 530, width: 50, height: 75, patrolLeft: 450, patrolRight: 750 },
